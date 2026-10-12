@@ -151,22 +151,25 @@ def generate_response(prompt: str, mode: str):
 
     if mode == "company":
         # Grounded RAG Retrieval
-        retrieval = knowledge_base.retrieve(prompt, top_k=3)
-        context = retrieval["context"]
-        sources = retrieval["sources"]
+        context_chunks = knowledge_base.retrieve_context(prompt, top_k=3)
+        sources = [
+            {"document": c.get("source", "NexaData_Company_Overview_and_Services.pdf"), "page": c.get("page", 1), "snippet": c.get("text", "")[:160]}
+            for c in context_chunks
+        ]
 
-        system_instruction = (
-            "You are NexaData AI, the official company intelligence assistant for NexaData.\n"
-            "Your tagline is 'Ask. Analyze. Discover.'\n"
-            "Answer the user's question clearly, professionally, and accurately using ONLY the official company documents provided below.\n"
-            "If the documents do not contain the answer, politely state: 'Based on official NexaData documents, this information is not available.'\n\n"
-            f"OFFICIAL DOCUMENTS CONTEXT:\n{context}"
-        )
+        if not context_chunks:
+            return (
+                "Based on official NexaData documents, this information is not available. "
+                "Please switch to the General Questions tab for open inquiries.",
+                []
+            )
+
+        sys_prompt, user_content = knowledge_base.build_grounded_prompt(prompt, context_chunks)
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_content}
             ],
             temperature=0.2
         )

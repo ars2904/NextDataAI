@@ -33,6 +33,10 @@ class VedaNovaKnowledgeBase:
             return []
         return self.retriever.search(question, top_k=top_k)
 
+    def retrieve(self, question: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """Alias for retrieve_context."""
+        return self.retrieve_context(question, top_k=top_k)
+
     def build_grounded_prompt(self, question: str, context_chunks: List[Dict[str, Any]]) -> Tuple[str, str]:
         """
         Create a strictly grounded system prompt and user context string.
