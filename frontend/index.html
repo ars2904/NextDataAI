@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>NexaData AI - Ask. Analyze. Discover.</title>
+  <link rel="icon" type="image/png" href="/static/icon.png">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+  <!-- Backdrop Overlay for Mobile Drawer -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- Left Sidebar (Collapsible Drawer on Mobile) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-wrapper">
+        <img src="/static/logo_dark.png" id="sidebarLogo" alt="NexaData AI" class="brand-logo-img">
+      </div>
+      <button class="sidebar-close-btn" onclick="closeSidebar()" aria-label="Close sidebar">✕</button>
+    </div>
+
+    <!-- New Conversation Button -->
+    <div class="new-chat-container">
+      <button class="btn-new-chat" id="btnNewChat">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        New Conversation
+      </button>
+    </div>
+
+    <!-- Mode Links -->
+    <div class="mode-links">
+      <button class="mode-link-btn active" id="sideBtnCompany" onclick="switchMode('company'); closeSidebar();">
+        <span>📄</span>
+        <span>Company Questions</span>
+      </button>
+      <button class="mode-link-btn" id="sideBtnGeneral" onclick="switchMode('general'); closeSidebar();">
+        <span>💬</span>
+        <span>General Questions</span>
+      </button>
+    </div>
+
+    <!-- Recent Conversations List with Search -->
+    <div class="history-section">
+      <div class="history-header">Recent Conversations</div>
+      
+      <div class="history-search-box">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" color="#64748B"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="history-search-input" id="searchHistoryInput" placeholder="Search conversations..." oninput="filterHistory(this.value)">
+      </div>
+
+      <div id="historyListContainer" style="display: flex; flex-direction: column; gap: 4px;">
+        <div class="history-item" onclick="loadSampleHistory('What is NexaData?')">
+          <div class="history-item-left">
+            <div class="history-item-icon">💬</div>
+            <div class="history-item-details">
+              <span class="history-title">What is NexaData?</span>
+              <span class="history-subtitle">Learn about our mission & platform...</span>
+            </div>
+          </div>
+          <div class="history-item-right">
+            <span class="history-time">2m ago</span>
+            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
+          </div>
+          <div class="history-dropdown">
+            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
+            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <div class="history-item" onclick="loadSampleHistory('Our solutions overview')">
+          <div class="history-item-left">
+            <div class="history-item-icon">📊</div>
+            <div class="history-item-details">
+              <span class="history-title">Our solutions overview</span>
+              <span class="history-subtitle">Explore enterprise data analytics...</span>
+            </div>
+          </div>
+          <div class="history-item-right">
+            <span class="history-time">1h ago</span>
+            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
+          </div>
+          <div class="history-dropdown">
+            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
+            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <div class="history-item" onclick="loadSampleHistory('Pricing information')">
+          <div class="history-item-left">
+            <div class="history-item-icon">💳</div>
+            <div class="history-item-details">
+              <span class="history-title">Pricing information</span>
+              <span class="history-subtitle">The cost of our enterprise tiers...</span>
+            </div>
+          </div>
+          <div class="history-item-right">
+            <span class="history-time">3h ago</span>
+            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
+          </div>
+          <div class="history-dropdown">
+            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
+            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <div class="history-item" onclick="loadSampleHistory('Security & Data privacy')">
+          <div class="history-item-left">
+            <div class="history-item-icon">🛡️</div>
+            <div class="history-item-details">
+              <span class="history-title">Security & Data privacy</span>
+              <span class="history-subtitle">Enterprise sandboxing & policies...</span>
+            </div>
+          </div>
+          <div class="history-item-right">
+            <span class="history-time">5h ago</span>
+            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
+          </div>
+          <div class="history-dropdown">
+            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
+            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <div class="history-item" onclick="loadSampleHistory('Enterprise support')">
+          <div class="history-item-left">
+            <div class="history-item-icon">⚡</div>
+            <div class="history-item-details">
+              <span class="history-title">Enterprise support</span>
+              <span class="history-subtitle">24/7 dedicated engineering team...</span>
+            </div>
+          </div>
+          <div class="history-item-right">
+            <span class="history-time">1d ago</span>
+            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
+          </div>
+          <div class="history-dropdown">
+            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
+            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main View -->
+  <main class="main-wrapper">
+    
+    <!-- Top Nav (Matching Screen 5 Mockup on Mobile) -->
+    <div class="top-nav">
+      <!-- Hamburger Menu on Mobile -->
+      <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
+
+      <!-- Center Logo on Mobile -->
+      <div class="mobile-nav-brand">
+        <img src="/static/logo_dark.png" id="mobileLogo" alt="NexaData AI" class="mobile-brand-logo-img">
+      </div>
+
+      <!-- Dual-Pill Switcher (Adaptive Desktop / Mobile Labels) -->
+      <div class="dual-pills">
+        <button class="pill-btn active" id="pillCompany" onclick="switchMode('company')">
+          <span>📄</span>
+          <span class="pill-text-desktop">Company Questions</span>
+          <span class="pill-text-mobile">Company</span>
+        </button>
+        <button class="pill-btn" id="pillGeneral" onclick="switchMode('general')">
+          <span>💬</span>
+          <span class="pill-text-desktop">General Questions</span>
+          <span class="pill-text-mobile">General</span>
+        </button>
+      </div>
+
+      <!-- Theme Switcher Button -->
+      <div class="top-nav-right">
+        <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Switch Theme">
+          <span id="themeToggleIcon">🌙</span>
+          <span class="theme-toggle-label">Dark</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Scrollable Chat Stream -->
+    <div class="chat-scroll-area" id="chatArea">
+      
+      <!-- Welcome Screen (Visible on fresh chat) -->
+      <div class="welcome-container" id="welcomeScreen">
+        
+        <!-- Glowing 3D Emblem Hero Banner -->
+        <div class="hero-emblem-wrap">
+          <div class="hero-emblem-glow"></div>
+          <img src="/static/icon.png" alt="NexaData AI" class="hero-emblem-img">
+        </div>
+
+        <h1 class="welcome-heading">Welcome to NexaData AI</h1>
+        <p class="welcome-subheading" id="welcomeSubtitle">
+          Get accurate answers from NexaData's official documents or ask general data & analytics questions.
+        </p>
+
+        <!-- Feature Cards (Desktop 2x2, Mobile Stack as in Screen 5) -->
+        <div class="cards-2x2-grid">
+          
+          <!-- Card 1: What is NexaData -->
+          <div class="feature-card" onclick="triggerPrompt('What is NexaData and what solutions do you offer?')">
+            <div class="card-left">
+              <div class="card-icon-box blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15 8C17 7 19 8 20 10C21 12 20 14 19 15C21 17 20 20 18 21C16 22 14 21 12 22C10 21 8 22 6 21C4 20 3 17 5 15C4 14 3 12 4 10C5 8 7 7 9 8L12 2Z"></path></svg>
+              </div>
+              <div class="card-text-box">
+                <h3>What is NexaData?</h3>
+                <p>Learn about our mission, vision and approach</p>
+              </div>
+            </div>
+            <div class="card-arrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </div>
+          </div>
+
+          <!-- Card 2: Our Solutions -->
+          <div class="feature-card" onclick="triggerPrompt('What are your enterprise solutions and pricing plans?')">
+            <div class="card-left">
+              <div class="card-icon-box gold">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M16 8l-8 8"></path><path d="M8 8l8 8"></path></svg>
+              </div>
+              <div class="card-text-box">
+                <h3>Our Solutions</h3>
+                <p>Explore data analytics solutions and pricing</p>
+              </div>
+            </div>
+            <div class="card-arrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </div>
+          </div>
+
+          <!-- Card 3: Security & Privacy -->
+          <div class="feature-card" onclick="triggerPrompt('What are your data privacy and security policies?')">
+            <div class="card-left">
+              <div class="card-icon-box green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              </div>
+              <div class="card-text-box">
+                <h3>Security & Privacy</h3>
+                <p>Zero data leakage guidelines and sandboxing</p>
+              </div>
+            </div>
+            <div class="card-arrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </div>
+          </div>
+
+          <!-- Card 4: Policies & Guarantee -->
+          <div class="feature-card" onclick="triggerPrompt('What is your satisfaction guarantee and refund policy?')">
+            <div class="card-left">
+              <div class="card-icon-box purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              </div>
+              <div class="card-text-box">
+                <h3>Policies & Guarantee</h3>
+                <p>Get information about our official policies</p>
+              </div>
+            </div>
+            <div class="card-arrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Quick Question Pills Row -->
+        <div class="quick-pills-row">
+          <button class="quick-pill" onclick="triggerPrompt('What solutions do you offer?')">What solutions do you offer?</button>
+          <button class="quick-pill" onclick="triggerPrompt('How does the AI pipeline work?')">How does the AI pipeline work?</button>
+          <button class="quick-pill" onclick="triggerPrompt('What are your pricing plans?')">What are your pricing plans?</button>
+          <button class="quick-pill" onclick="triggerPrompt('Tell me about data privacy')">Tell me about data privacy</button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Bottom Input Bar -->
+    <div class="bottom-input-container">
+      <div class="input-capsule">
+        <span class="clip-icon" title="Official Documents Grounded">📎</span>
+        
+        <textarea 
+          id="chatInput" 
+          class="capsule-textarea" 
+          placeholder="Ask anything about NexaData..." 
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="adjustInputHeight(this)"
+        ></textarea>
+
+        <button class="send-circle-btn" id="btnSend" onclick="submitMessage()" title="Send">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
