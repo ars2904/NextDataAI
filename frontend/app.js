@@ -82,20 +82,21 @@ function loadSavedConversations() {
     conversations = [];
   }
 
-  // If no conversations stored yet, populate starter conversations
-  if (!conversations || conversations.length === 0) {
+  // If no conversations stored yet (or legacy 2 items), populate full 5 starter conversations
+  if (!conversations || conversations.length <= 2) {
     conversations = [
       {
         id: 'starter_1',
         title: 'What is NexaData?',
         mode: 'company',
+        icon: '💬',
         messages: [
           { type: 'user', text: 'What is NexaData and what solutions do you offer?', timestamp: '10:20 AM' },
           { 
             type: 'bot', 
-            reply: 'NexaData AI is an autonomous data analytics and intelligence platform providing end-to-end data processing, automated SQL analytics, and executive reporting.',
+            reply: 'NexaData AI is an autonomous enterprise data intelligence platform providing document-grounded analytics, real-time knowledge synthesis, and automated business workflows.',
             timestamp: '10:20 AM',
-            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 1, snippet: 'NexaData AI platform overview...' }],
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 1, snippet: 'NexaData platform mission and core capabilities...' }],
             mode: 'company'
           }
         ],
@@ -105,17 +106,69 @@ function loadSavedConversations() {
         id: 'starter_2',
         title: 'Our solutions overview',
         mode: 'company',
+        icon: '📊',
         messages: [
           { type: 'user', text: 'What are your enterprise solutions and pricing plans?', timestamp: '09:30 AM' },
           { 
             type: 'bot', 
-            reply: 'We offer Enterprise Analytics, Real-time Reporting, and Custom AI Connectors tailored to enterprise data workflows.',
+            reply: 'We offer Enterprise Engine ($12,500/mo), Cloud Analytics ($4,800/mo), Secure Sandbox ($2,200/mo), and Custom ETL pipelines with dedicated engineering.',
             timestamp: '09:30 AM',
-            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 1, snippet: 'Enterprise solutions and tiers...' }],
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 2, snippet: 'Enterprise solutions and subscription tiers...' }],
             mode: 'company'
           }
         ],
         updatedAt: Date.now() - 3600000
+      },
+      {
+        id: 'starter_3',
+        title: 'Pricing information',
+        mode: 'company',
+        icon: '💳',
+        messages: [
+          { type: 'user', text: 'What is the pricing breakdown for your platform tiers?', timestamp: '08:15 AM' },
+          { 
+            type: 'bot', 
+            reply: 'Pricing starts at $1,500/mo for Developer API Gateway up to $12,500/mo for Platinum Enterprise Engine, with volume discounts on multi-year agreements.',
+            timestamp: '08:15 AM',
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 3, snippet: 'Platform pricing and licensing options...' }],
+            mode: 'company'
+          }
+        ],
+        updatedAt: Date.now() - 10800000
+      },
+      {
+        id: 'starter_4',
+        title: 'Security & Data privacy',
+        mode: 'company',
+        icon: '🛡️',
+        messages: [
+          { type: 'user', text: 'What are your data privacy and security policies?', timestamp: 'Yesterday' },
+          { 
+            type: 'bot', 
+            reply: 'We enforce zero data leakage, client-isolated enclaves, HIPAA/SOC2 compliant storage, and end-to-end encrypted query pipelines.',
+            timestamp: 'Yesterday',
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 4, snippet: 'Data privacy and security standards...' }],
+            mode: 'company'
+          }
+        ],
+        updatedAt: Date.now() - 18000000
+      },
+      {
+        id: 'starter_5',
+        title: 'Enterprise support',
+        mode: 'company',
+        icon: '⚡',
+        messages: [
+          { type: 'user', text: 'What level of technical support is included in enterprise tiers?', timestamp: '2 days ago' },
+          { 
+            type: 'bot', 
+            reply: 'Enterprise plans include 24/7 dedicated solutions engineering, a 99.99% uptime SLA, priority bug resolution, and custom connector integration.',
+            timestamp: '2 days ago',
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 5, snippet: 'Dedicated enterprise engineering and SLA...' }],
+            mode: 'company'
+          }
+        ],
+        updatedAt: Date.now() - 86400000
       }
     ];
     saveConversationsToStorage();
@@ -156,17 +209,25 @@ function renderHistoryList(filterTerm = '') {
     item.className = 'history-item' + (isActive ? ' active' : '');
     item.onclick = () => openConversation(conv.id);
 
-    const icon = conv.mode === 'company' ? '📄' : '💬';
+    let icon = conv.icon || (conv.mode === 'company' ? '📄' : '💬');
+    let iconClass = 'blue';
+    const tLower = (conv.title || '').toLowerCase();
+    if (tLower.includes('what is')) { icon = '💬'; iconClass = 'blue'; }
+    else if (tLower.includes('solution') || tLower.includes('overview')) { icon = '📊'; iconClass = 'cyan'; }
+    else if (tLower.includes('pricing') || tLower.includes('cost') || tLower.includes('price')) { icon = '💳'; iconClass = 'teal'; }
+    else if (tLower.includes('security') || tLower.includes('privacy')) { icon = '🛡️'; iconClass = 'green'; }
+    else if (tLower.includes('support') || tLower.includes('pipeline') || tLower.includes('enterprise')) { icon = '⚡'; iconClass = 'amber'; }
+
     let snippet = 'Conversation ready';
     if (conv.messages && conv.messages.length > 0) {
       const last = conv.messages[conv.messages.length - 1];
       const rawText = last.reply || last.text || '';
-      snippet = rawText.replace(/[#*`_\[\]()]/g, '').trim().substring(0, 36) + '...';
+      snippet = rawText.replace(/[#*`_\[\]()]/g, '').trim().substring(0, 38) + '...';
     }
 
     item.innerHTML = `
       <div class="history-item-left">
-        <div class="history-item-icon">${icon}</div>
+        <div class="history-item-icon ${iconClass}">${icon}</div>
         <div class="history-item-details">
           <span class="history-title" title="${escapeHtml(conv.title)}">${escapeHtml(conv.title)}</span>
           <span class="history-subtitle">${escapeHtml(snippet)}</span>
@@ -261,7 +322,7 @@ function updateModePillsUI() {
     pillCompany.classList.remove('active');
     sideBtnGeneral.classList.add('active');
     sideBtnCompany.classList.remove('active');
-    chatInput.placeholder = 'Ask a general programming or analytics question...';
+    chatInput.placeholder = 'Ask anything or type a prompt...';
   }
 }
 
@@ -308,7 +369,7 @@ function updateWelcomeScreenContent() {
   } else {
     // Option B: Minimalist General Questions View
     if (heading) heading.textContent = 'How can I help you today?';
-    if (subtitle) subtitle.textContent = 'Ask open-ended questions about Python, data science, algorithms, and general topics.';
+    if (subtitle) subtitle.textContent = 'Ask me anything — explore ideas, write, summarize, brainstorm, solve problems, or chat about any topic.';
     if (cardsGrid) cardsGrid.style.display = 'none';
     if (pillsRow) pillsRow.style.display = 'none';
   }

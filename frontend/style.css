@@ -28,31 +28,31 @@
 }
 
 [data-theme="light"] {
-  /* Clean Enterprise SaaS Light Theme */
+  /* Clean High-Contrast Enterprise SaaS Light Theme */
   --bg-dark: #f8fafc;
   --bg-sidebar: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f1f5f9;
+  --bg-card-hover: #f8fafc;
   --border-color: #e2e8f0;
-  --border-active: rgba(2, 132, 199, 0.4);
+  --border-active: #0284c7;
   --accent-blue: #0284c7;
   --accent-blue-hover: #0369a1;
   --accent-cyan: #0284c7;
   --text-main: #0f172a;
-  --text-muted: #475569;
-  --text-dim: #94a3b8;
+  --text-muted: #334155;
+  --text-dim: #64748b;
   --user-msg: #0284c7;
   --bot-msg: #ffffff;
   --input-bg: #ffffff;
   --input-border: #cbd5e1;
   --radial-glow: radial-gradient(circle at 50% 12%, rgba(2, 132, 199, 0.05) 0%, transparent 65%);
-  --card-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  --card-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
   --card-arrow-bg: #f1f5f9;
   --card-arrow-color: #64748b;
   --chip-bg: #ffffff;
   --chip-border: #e2e8f0;
-  --chip-hover: #f1f5f9;
-  --top-nav-bg: rgba(248, 250, 252, 0.88);
+  --chip-hover: #f0f9ff;
+  --top-nav-bg: rgba(255, 255, 255, 0.95);
   --dropdown-bg: #ffffff;
 }
 
@@ -1304,3 +1304,273 @@ body[data-mode="general"] #companyPillsRow,
     display: none;
   }
 }
+
+/* ========================================================= */
+/* ☀️ HIGH-CONTRAST LIGHT THEME REFINEMENTS (Enterprise SaaS) */
+/* ========================================================= */
+
+/* Sidebar Icon Color Badges (Base & Dark) */
+.history-item-icon.blue  { background: rgba(2, 132, 199, 0.14); color: #0284c7; }
+.history-item-icon.cyan  { background: rgba(6, 182, 212, 0.14); color: #0891b2; }
+.history-item-icon.teal  { background: rgba(20, 184, 166, 0.14); color: #0d9488; }
+.history-item-icon.green { background: rgba(16, 185, 129, 0.14); color: #059669; }
+.history-item-icon.amber { background: rgba(245, 158, 11, 0.14); color: #d97706; }
+
+/* 1. Dual Pills Switcher (Top Navigation) */
+[data-theme="light"] .dual-pills {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .pill-btn {
+  color: #475569;
+  font-weight: 500;
+}
+
+[data-theme="light"] .pill-btn:hover:not(.active) {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+[data-theme="light"] .pill-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.28);
+}
+
+[data-theme="light"] .theme-toggle-btn {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .theme-toggle-btn:hover {
+  background: #f8fafc;
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
+/* 2. Sidebar Search & Recent History Items */
+[data-theme="light"] .history-header {
+  color: #64748b;
+  font-weight: 700;
+}
+
+[data-theme="light"] .history-search-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .history-search-box:focus-within {
+  border-color: #0284c7;
+  background: #ffffff;
+}
+
+[data-theme="light"] .history-search-input {
+  color: #0f172a;
+}
+
+[data-theme="light"] .history-search-input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .history-item {
+  border: 1px solid transparent;
+}
+
+[data-theme="light"] .history-item:hover {
+  background: #f1f5f9;
+}
+
+[data-theme="light"] .history-item.active {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+[data-theme="light"] .history-item.active .history-title {
+  color: #0284c7;
+  font-weight: 600;
+}
+
+[data-theme="light"] .history-title {
+  color: #1e293b;
+  font-weight: 500;
+}
+
+[data-theme="light"] .history-subtitle {
+  color: #64748b;
+}
+
+[data-theme="light"] .history-dots-btn {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .history-dots-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Colorful icon badges in light mode */
+[data-theme="light"] .history-item-icon.blue  { background: #e0f2fe; color: #0284c7; }
+[data-theme="light"] .history-item-icon.cyan  { background: #cffafe; color: #0891b2; }
+[data-theme="light"] .history-item-icon.teal  { background: #ccfbf1; color: #0d9488; }
+[data-theme="light"] .history-item-icon.green { background: #d1fae5; color: #059669; }
+[data-theme="light"] .history-item-icon.amber { background: #fef3c7; color: #d97706; }
+
+/* 3. Sidebar Footer PDF Download Button */
+[data-theme="light"] .sidebar-footer {
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .btn-export-pdf {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0284c7;
+  font-weight: 600;
+}
+
+[data-theme="light"] .btn-export-pdf:hover {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
+}
+
+/* 4. Feature Cards */
+[data-theme="light"] .feature-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .feature-card:hover {
+  background: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.12);
+}
+
+/* Card 1 Highlighted State (matching Mockup in Image 1) */
+[data-theme="light"] .feature-card:first-child {
+  border-color: #bae6fd;
+  background: #fafcff;
+}
+
+[data-theme="light"] .feature-card:first-child .card-arrow {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+}
+
+[data-theme="light"] .card-text-box h3 {
+  color: #0f172a;
+}
+
+[data-theme="light"] .card-text-box p {
+  color: #64748b;
+}
+
+[data-theme="light"] .card-arrow {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+
+[data-theme="light"] .card-icon-box.blue   { background: #e0f2fe; color: #0284c7; }
+[data-theme="light"] .card-icon-box.gold   { background: #fef3c7; color: #d97706; }
+[data-theme="light"] .card-icon-box.green  { background: #d1fae5; color: #059669; }
+[data-theme="light"] .card-icon-box.purple { background: #ede9fe; color: #7c3aed; }
+
+/* 5. Quick Pills */
+[data-theme="light"] .quick-pill {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] .quick-pill:hover {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+  color: #0284c7;
+}
+
+/* 6. Chat Messages & Sources in Light Theme */
+[data-theme="light"] .chat-row.bot .chat-bubble {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] .chat-avatar.bot {
+  background: #e0f2fe;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
+}
+
+[data-theme="light"] .source-clean-card {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+[data-theme="light"] .source-clean-text h4 {
+  color: #0f172a;
+}
+
+[data-theme="light"] .source-clean-text p {
+  color: #475569;
+}
+
+[data-theme="light"] .source-view-btn {
+  color: #0284c7;
+}
+
+/* 7. Bottom Input Capsule */
+[data-theme="light"] .input-capsule {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .input-capsule:focus-within {
+  border-color: #0284c7;
+  box-shadow: 0 2px 16px rgba(2, 132, 199, 0.15);
+}
+
+[data-theme="light"] .clip-icon {
+  color: #64748b;
+}
+
+[data-theme="light"] .clip-icon:hover {
+  color: #0284c7;
+}
+
+[data-theme="light"] .capsule-textarea {
+  color: #0f172a;
+}
+
+[data-theme="light"] .capsule-textarea::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .send-circle-btn {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+[data-theme="light"] .send-circle-btn:hover {
+  background: #0369a1;
+}
+
+[data-theme="light"] .welcome-heading {
+  color: #0f172a;
+}
+
+[data-theme="light"] .welcome-subheading {
+  color: #475569;
+}
+

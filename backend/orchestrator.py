@@ -140,7 +140,7 @@ class ChatOrchestrator:
             f"1. Never confuse the current date ({ctx['current_date']}) with your training data cutoff.\n"
             f"2. Your exact pre-training cutoff date for model '{ctx['configured_model']}' is not definitively verified by the runtime environment. If asked about your training cutoff, clearly state that your exact training cutoff date is unknown or unverified rather than inventing a date or claiming an unverified cutoff (e.g., do not claim 'October 2023' unless verified).\n"
             f"3. Do not claim real-time web browsing or internet access merely because you have been provided with today's date. State that live information is available ONLY through NexaData's actual integrations—specifically, the connected live PostgreSQL database (for products, client master records, and transactions) and indexed company documents—and not from general web browsing.\n"
-            f"4. Answer clearly, accurately, and politely on Python, data science, machine learning, analytics, and general topics."
+            f"4. You are a versatile general-purpose AI assistant. Answer helpfully, thoroughly, and clearly on any topic, creative task, writing, brainstorming, planning, or general question."
         )
 
     def _handle_dynamic_temporal_or_capability(self, message: str) -> Optional[str]:
@@ -227,8 +227,8 @@ class ChatOrchestrator:
         # 4. Dynamic Offline General AI Answer
         ctx = self._get_dynamic_context()
         reply = (
-            f"Hello! In **General Questions** mode, I can help answer programming, data science, "
-            f"and analytics questions.\n\n"
+            f"Hello! In **General Questions** mode, I am a versatile general-purpose AI assistant "
+            f"ready to help with any topic, idea, writing, research, or question.\n\n"
             f"*(Current date: {ctx['current_date']}. To enable cloud LLM generative completions, "
             f"configure your server OPENAI_API_KEY in `.env`).*"
         )

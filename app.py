@@ -323,9 +323,9 @@ with tab_explorer:
 # -------------------------------------------------------------
 with tab_general:
     st.subheader("NexaData AI General Assistant")
-    st.caption("Ask general questions about Python, data analysis, statistics, or AI concepts.")
+    st.caption("Ask anything — explore ideas, write, summarize, brainstorm, solve problems, or chat about any topic.")
 
-    gen_q = st.text_area("Ask any question:", placeholder="e.g., Explain the difference between DuckDB and Pandas.")
+    gen_q = st.text_area("Ask any question:", placeholder="e.g., Ask anything or type a prompt...")
     if st.button("Ask Assistant", type="secondary"):
         if not api_key:
             st.error("Please enter an OpenAI API key in the sidebar.")
@@ -338,7 +338,7 @@ with tab_general:
                     resp = client.chat.completions.create(
                         model=selected_model,
                         messages=[
-                            {"role": "system", "content": "You are NexaData AI, an expert AI and data science assistant. Provide clear, concise, and helpful answers."},
+                            {"role": "system", "content": "You are NexaData AI, a versatile general-purpose AI assistant. Provide clear, concise, and helpful answers on any topic or question."},
                             {"role": "user", "content": gen_q.strip()}
                         ],
                         max_tokens=800

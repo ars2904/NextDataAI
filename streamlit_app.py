@@ -186,7 +186,7 @@ def generate_response(prompt: str, mode: str):
             f"1. Never confuse the current date with your training cutoff.\n"
             f"2. If asked about training cutoff, state that the exact training cutoff is unknown/unverified rather than inventing an unverified date.\n"
             f"3. Do not claim live internet/web access merely because the current date is provided. State that real-time information is available only through NexaData's active data integrations.\n"
-            f"4. Answer clearly, thoroughly, and accurately regarding Python, data science, machine learning, and general topics."
+            f"4. You are a versatile general-purpose AI assistant. Answer clearly, thoroughly, and helpfully on any topic, task, writing, or general question."
         )
         response = client.chat.completions.create(
             model="gpt-4o-mini",
