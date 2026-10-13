@@ -489,6 +489,225 @@ function removeAttachedFile() {
 }
 
 // ----------------------------------------------------
+// Voice Recording & Speech Recognition (English / Hindi)
+// ----------------------------------------------------
+let isRecordingVoice = false;
+let speechRecognition = null;
+let currentSpeechLang = 'en-IN';
+let initialTextBeforeVoice = '';
+let mediaRecorder = null;
+let recordedAudioChunks = [];
+let voiceStream = null;
+
+function setSpeechLanguage(lang) {
+  currentSpeechLang = lang;
+  const btnEn = document.getElementById('btnLangEn');
+  const btnHi = document.getElementById('btnLangHi');
+
+  if (btnEn && btnHi) {
+    if (lang.startsWith('hi')) {
+      btnHi.classList.add('active');
+      btnEn.classList.remove('active');
+    } else {
+      btnEn.classList.add('active');
+      btnHi.classList.remove('active');
+    }
+  }
+
+  if (speechRecognition && isRecordingVoice) {
+    speechRecognition.lang = lang;
+  }
+}
+
+function updateVoiceRecordingUI(isRecording, statusText = '') {
+  const bar = document.getElementById('voiceRecordingBar');
+  const statusEl = document.getElementById('voiceRecordingStatus');
+  const micBtn = document.getElementById('btnMic');
+
+  if (bar) bar.style.display = isRecording ? 'flex' : 'none';
+  if (statusEl && statusText) statusEl.textContent = statusText;
+  if (micBtn) {
+    if (isRecording) {
+      micBtn.classList.add('recording');
+      micBtn.setAttribute('title', 'Recording in progress... Click to stop');
+    } else {
+      micBtn.classList.remove('recording');
+      micBtn.setAttribute('title', 'Speak your question (English / Hindi)');
+    }
+  }
+}
+
+function toggleVoiceRecording() {
+  if (isRecordingVoice) {
+    stopVoiceRecording(true);
+  } else {
+    startVoiceRecording();
+  }
+}
+
+function startVoiceRecording() {
+  initialTextBeforeVoice = chatInput.value;
+  const SpeechRecClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRecClass) {
+    try {
+      speechRecognition = new SpeechRecClass();
+      speechRecognition.continuous = true;
+      speechRecognition.interimResults = true;
+      speechRecognition.lang = currentSpeechLang;
+
+      speechRecognition.onstart = () => {
+        isRecordingVoice = true;
+        const langLabel = currentSpeechLang.startsWith('hi') ? 'Hindi (हिंदी)' : 'English';
+        updateVoiceRecordingUI(true, `Listening in ${langLabel}... Speak now`);
+      };
+
+      speechRecognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            finalTranscript += item[0].transcript;
+          } else {
+            interimTranscript += item[0].transcript;
+          }
+        }
+
+        const transcript = (finalTranscript || interimTranscript).trim();
+        if (transcript) {
+          const prefix = initialTextBeforeVoice.trim() ? initialTextBeforeVoice.trim() + ' ' : '';
+          chatInput.value = prefix + transcript;
+          adjustInputHeight(chatInput);
+          chatInput.scrollTop = chatInput.scrollHeight;
+        }
+      };
+
+      speechRecognition.onerror = (event) => {
+        console.warn('SpeechRecognition error:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          alert('Microphone access was denied. Please allow microphone permissions in your browser address bar.');
+          stopVoiceRecording(false);
+        } else if (event.error === 'no-speech') {
+          updateVoiceRecordingUI(true, 'No speech detected. Still listening...');
+        } else {
+          stopVoiceRecording(true);
+        }
+      };
+
+      speechRecognition.onend = () => {
+        if (isRecordingVoice) {
+          stopVoiceRecording(true);
+        }
+      };
+
+      speechRecognition.start();
+      return;
+    } catch (err) {
+      console.warn('SpeechRecognition initialization failed, trying MediaRecorder fallback:', err);
+    }
+  }
+
+  // Fallback to MediaRecorder audio capture with server-side transcription
+  startMediaRecorderFallback();
+}
+
+async function startMediaRecorderFallback() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Voice input is not supported in this browser. Please use Chrome, Edge, Safari, or a modern mobile browser.');
+    return;
+  }
+
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedAudioChunks = [];
+    mediaRecorder = new MediaRecorder(voiceStream);
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recordedAudioChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = async () => {
+      if (voiceStream) {
+        voiceStream.getTracks().forEach(track => track.stop());
+        voiceStream = null;
+      }
+
+      if (recordedAudioChunks.length > 0 && isRecordingVoice) {
+        updateVoiceRecordingUI(true, 'Transcribing audio...');
+        const audioBlob = new Blob(recordedAudioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'voice_recording.webm');
+        formData.append('language', currentSpeechLang.startsWith('hi') ? 'hi' : 'en');
+
+        try {
+          const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.text) {
+              const prefix = initialTextBeforeVoice.trim() ? initialTextBeforeVoice.trim() + ' ' : '';
+              chatInput.value = prefix + data.text.trim();
+              adjustInputHeight(chatInput);
+            }
+          }
+        } catch (err) {
+          console.warn('Transcription request failed:', err);
+        }
+      }
+      stopVoiceRecording(true);
+    };
+
+    mediaRecorder.start();
+    isRecordingVoice = true;
+    updateVoiceRecordingUI(true, 'Recording audio... Click Done when finished');
+  } catch (err) {
+    console.warn('Microphone permission error:', err);
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      alert('Microphone permission was denied. Please allow microphone access to use voice input.');
+    } else {
+      alert(`Could not access microphone: ${err.message}`);
+    }
+    stopVoiceRecording(false);
+  }
+}
+
+function stopVoiceRecording(keepText = true) {
+  isRecordingVoice = false;
+
+  if (speechRecognition) {
+    try {
+      speechRecognition.stop();
+    } catch (e) {}
+    speechRecognition = null;
+  }
+
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try {
+      mediaRecorder.stop();
+    } catch (e) {}
+    mediaRecorder = null;
+  }
+
+  if (voiceStream) {
+    try {
+      voiceStream.getTracks().forEach(track => track.stop());
+    } catch (e) {}
+    voiceStream = null;
+  }
+
+  if (!keepText) {
+    chatInput.value = initialTextBeforeVoice;
+    adjustInputHeight(chatInput);
+  }
+
+  updateVoiceRecordingUI(false);
+  chatInput.focus();
+}
+
+// ----------------------------------------------------
 // Inputs & Actions
 // ----------------------------------------------------
 function handleKey(e) {

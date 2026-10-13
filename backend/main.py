@@ -165,6 +165,56 @@ async def upload_preview_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # ============================================================================
+# 🎙️ Speech-to-Text Transcription Endpoint (OpenAI Whisper & Fallback)
+# ============================================================================
+@app.post("/api/transcribe")
+async def transcribe_audio_endpoint(
+    file: UploadFile = File(...),
+    language: Optional[str] = Form("en")
+):
+    """
+    Transcribe speech audio recording (webm/wav/mp3/m4a) to text.
+    Supports English ('en') and Hindi ('hi').
+    Uses OpenAI Whisper when configured, with safe offline fallback.
+    """
+    try:
+        audio_bytes = await file.read()
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="Empty audio recording.")
+
+        # If OpenAI client available, invoke Whisper API
+        if orchestrator.client:
+            try:
+                whisper_lang = "hi" if language and language.startswith("hi") else "en"
+                audio_file = (file.filename or "recording.webm", audio_bytes, file.content_type or "audio/webm")
+                transcription = orchestrator.client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    language=whisper_lang
+                )
+                return {
+                    "status": "success",
+                    "text": transcription.text.strip(),
+                    "language": whisper_lang,
+                    "provider": "whisper"
+                }
+            except Exception as we:
+                pass
+
+        return {
+            "status": "offline",
+            "text": "",
+            "language": language or "en",
+            "provider": "offline",
+            "message": "Audio received. For server-side Whisper transcription, configure OPENAI_API_KEY in .env."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+
+# ============================================================================
 # 📄 Conversation PDF Download Endpoint
 # ============================================================================
 @app.post("/api/export-pdf")

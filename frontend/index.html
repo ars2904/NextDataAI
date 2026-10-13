@@ -220,6 +220,22 @@
         </button>
       </div>
 
+      <!-- Voice Recording Status Bar (Hidden by default) -->
+      <div id="voiceRecordingBar" class="voice-recording-bar" style="display: none;">
+        <div class="voice-recording-left">
+          <span class="recording-pulse-dot"></span>
+          <span id="voiceRecordingStatus" class="voice-status-text">Listening... Speak in English or Hindi</span>
+          <div class="voice-lang-picker">
+            <button type="button" class="lang-pill active" id="btnLangEn" onclick="setSpeechLanguage('en-IN')" title="English">EN</button>
+            <button type="button" class="lang-pill" id="btnLangHi" onclick="setSpeechLanguage('hi-IN')" title="Hindi (हिंदी)">हिंदी</button>
+          </div>
+        </div>
+        <div class="voice-recording-actions">
+          <button type="button" class="voice-act-btn done" onclick="stopVoiceRecording(true)" title="Done recording">Done ✓</button>
+          <button type="button" class="voice-act-btn cancel" onclick="stopVoiceRecording(false)" title="Cancel recording">✕</button>
+        </div>
+      </div>
+
       <div class="input-capsule">
         <input 
           type="file" 
@@ -241,11 +257,27 @@
         <textarea 
           id="chatInput" 
           class="capsule-textarea" 
-          placeholder="Ask anything about NexaData or upload files..." 
+          placeholder="Ask anything about NexaData, upload files, or speak..." 
           rows="1"
           onkeydown="handleKey(event)"
           oninput="adjustInputHeight(this)"
         ></textarea>
+
+        <!-- Voice Microphone Button -->
+        <button 
+          type="button" 
+          id="btnMic" 
+          class="mic-icon-btn" 
+          onclick="toggleVoiceRecording()" 
+          title="Speak your question (English / Hindi)"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
 
         <button class="send-circle-btn" id="btnSend" onclick="submitMessage()" title="Send">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -258,6 +290,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=3.3"></script>
+  <script src="/static/app.js?v=3.4"></script>
 </body>
 </html>
