@@ -52,95 +52,7 @@
       </div>
 
       <div id="historyListContainer" style="display: flex; flex-direction: column; gap: 4px;">
-        <div class="history-item" onclick="loadSampleHistory('What is NexaData?')">
-          <div class="history-item-left">
-            <div class="history-item-icon">💬</div>
-            <div class="history-item-details">
-              <span class="history-title">What is NexaData?</span>
-              <span class="history-subtitle">Learn about our mission & platform...</span>
-            </div>
-          </div>
-          <div class="history-item-right">
-            <span class="history-time">2m ago</span>
-            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
-          </div>
-          <div class="history-dropdown">
-            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
-            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
-          </div>
-        </div>
-
-        <div class="history-item" onclick="loadSampleHistory('Our solutions overview')">
-          <div class="history-item-left">
-            <div class="history-item-icon">📊</div>
-            <div class="history-item-details">
-              <span class="history-title">Our solutions overview</span>
-              <span class="history-subtitle">Explore enterprise data analytics...</span>
-            </div>
-          </div>
-          <div class="history-item-right">
-            <span class="history-time">1h ago</span>
-            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
-          </div>
-          <div class="history-dropdown">
-            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
-            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
-          </div>
-        </div>
-
-        <div class="history-item" onclick="loadSampleHistory('Pricing information')">
-          <div class="history-item-left">
-            <div class="history-item-icon">💳</div>
-            <div class="history-item-details">
-              <span class="history-title">Pricing information</span>
-              <span class="history-subtitle">The cost of our enterprise tiers...</span>
-            </div>
-          </div>
-          <div class="history-item-right">
-            <span class="history-time">3h ago</span>
-            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
-          </div>
-          <div class="history-dropdown">
-            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
-            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
-          </div>
-        </div>
-
-        <div class="history-item" onclick="loadSampleHistory('Security & Data privacy')">
-          <div class="history-item-left">
-            <div class="history-item-icon">🛡️</div>
-            <div class="history-item-details">
-              <span class="history-title">Security & Data privacy</span>
-              <span class="history-subtitle">Enterprise sandboxing & policies...</span>
-            </div>
-          </div>
-          <div class="history-item-right">
-            <span class="history-time">5h ago</span>
-            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
-          </div>
-          <div class="history-dropdown">
-            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
-            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
-          </div>
-        </div>
-
-        <div class="history-item" onclick="loadSampleHistory('Enterprise support')">
-          <div class="history-item-left">
-            <div class="history-item-icon">⚡</div>
-            <div class="history-item-details">
-              <span class="history-title">Enterprise support</span>
-              <span class="history-subtitle">24/7 dedicated engineering team...</span>
-            </div>
-          </div>
-          <div class="history-item-right">
-            <span class="history-time">1d ago</span>
-            <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)">···</button>
-          </div>
-          <div class="history-dropdown">
-            <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameHistoryItem(this)">✏️ Rename</button>
-            <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteHistoryItem(this)">🗑️ Delete</button>
-          </div>
-        </div>
+        <!-- Dynamically populated from localStorage -->
       </div>
     </div>
   </aside>
@@ -199,7 +111,7 @@
         </p>
 
         <!-- Feature Cards (Desktop 2x2, Mobile Stack as in Screen 5) -->
-        <div class="cards-2x2-grid">
+        <div class="cards-2x2-grid" id="companyCardsGrid">
           
           <!-- Card 1: What is NexaData -->
           <div class="feature-card" onclick="triggerPrompt('What is NexaData and what solutions do you offer?')">
@@ -268,7 +180,7 @@
         </div>
 
         <!-- Quick Question Pills Row -->
-        <div class="quick-pills-row">
+        <div class="quick-pills-row" id="companyPillsRow">
           <button class="quick-pill" onclick="triggerPrompt('What solutions do you offer?')">What solutions do you offer?</button>
           <button class="quick-pill" onclick="triggerPrompt('How does the AI pipeline work?')">How does the AI pipeline work?</button>
           <button class="quick-pill" onclick="triggerPrompt('What are your pricing plans?')">What are your pricing plans?</button>

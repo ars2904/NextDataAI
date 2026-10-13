@@ -1,10 +1,17 @@
-// NexaData AI App Controller - Independent Dual-Tab Threads & Theme Management
+// NexaData AI App Controller - Independent Dual-Tab Threads, Theme & Dynamic History
 
 let currentMode = 'company';
 let isSending = false;
 let currentTheme = localStorage.getItem('nexadata_theme') || 'dark';
 
-// Independent Conversation Threads for each tab
+// Storage Keys
+const STORAGE_KEY_CONVS = 'nexadata_saved_conversations';
+const STORAGE_KEY_ACTIVE = 'nexadata_active_conv_id';
+
+let activeConvId = localStorage.getItem(STORAGE_KEY_ACTIVE) || null;
+let conversations = [];
+
+// Independent Conversation Threads for active view
 const threads = {
   company: [],
   general: []
@@ -24,7 +31,17 @@ const btnNewChat = document.getElementById('btnNewChat');
 const sidebar = document.getElementById('sidebar');
 const sidebarOverlay = document.getElementById('sidebarOverlay');
 
+// Helper: Escape HTML
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ----------------------------------------------------
 // Theme Management
+// ----------------------------------------------------
 function initTheme() {
   applyTheme(currentTheme);
 }
@@ -54,19 +71,180 @@ function applyTheme(theme) {
   }
 }
 
-// Initialize on load
-document.addEventListener('DOMContentLoaded', () => {
-  initTheme();
+// ----------------------------------------------------
+// Storage & Conversation History
+// ----------------------------------------------------
+function loadSavedConversations() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CONVS);
+    conversations = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    conversations = [];
+  }
+
+  // If no conversations stored yet, populate starter conversations
+  if (!conversations || conversations.length === 0) {
+    conversations = [
+      {
+        id: 'starter_1',
+        title: 'What is NexaData?',
+        mode: 'company',
+        messages: [
+          { type: 'user', text: 'What is NexaData and what solutions do you offer?', timestamp: '10:20 AM' },
+          { 
+            type: 'bot', 
+            reply: 'NexaData AI is an autonomous data analytics and intelligence platform providing end-to-end data processing, automated SQL analytics, and executive reporting.',
+            timestamp: '10:20 AM',
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 1, snippet: 'NexaData AI platform overview...' }],
+            mode: 'company'
+          }
+        ],
+        updatedAt: Date.now() - 120000
+      },
+      {
+        id: 'starter_2',
+        title: 'Our solutions overview',
+        mode: 'company',
+        messages: [
+          { type: 'user', text: 'What are your enterprise solutions and pricing plans?', timestamp: '09:30 AM' },
+          { 
+            type: 'bot', 
+            reply: 'We offer Enterprise Analytics, Real-time Reporting, and Custom AI Connectors tailored to enterprise data workflows.',
+            timestamp: '09:30 AM',
+            sources: [{ document: 'NexaData_Company_Overview_and_Services.pdf', page: 1, snippet: 'Enterprise solutions and tiers...' }],
+            mode: 'company'
+          }
+        ],
+        updatedAt: Date.now() - 3600000
+      }
+    ];
+    saveConversationsToStorage();
+  }
+}
+
+function saveConversationsToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY_CONVS, JSON.stringify(conversations));
+  } catch (e) {
+    console.error('Failed to save conversations:', e);
+  }
+}
+
+function renderHistoryList(filterTerm = '') {
+  const container = document.getElementById('historyListContainer');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const lower = (filterTerm || '').toLowerCase().trim();
+
+  const filtered = conversations.filter(c => 
+    !lower || (c.title && c.title.toLowerCase().includes(lower))
+  );
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 14px 10px; font-size: 12px; color: var(--text-dim); text-align: center;">
+        No conversations found.
+      </div>
+    `;
+    return;
+  }
+
+  filtered.forEach(conv => {
+    const item = document.createElement('div');
+    const isActive = conv.id === activeConvId;
+    item.className = 'history-item' + (isActive ? ' active' : '');
+    item.onclick = () => openConversation(conv.id);
+
+    const icon = conv.mode === 'company' ? '📄' : '💬';
+    let snippet = 'Conversation ready';
+    if (conv.messages && conv.messages.length > 0) {
+      const last = conv.messages[conv.messages.length - 1];
+      const rawText = last.reply || last.text || '';
+      snippet = rawText.replace(/[#*`_\[\]()]/g, '').trim().substring(0, 36) + '...';
+    }
+
+    item.innerHTML = `
+      <div class="history-item-left">
+        <div class="history-item-icon">${icon}</div>
+        <div class="history-item-details">
+          <span class="history-title" title="${escapeHtml(conv.title)}">${escapeHtml(conv.title)}</span>
+          <span class="history-subtitle">${escapeHtml(snippet)}</span>
+        </div>
+      </div>
+      <div class="history-item-right">
+        <button class="history-dots-btn" onclick="event.stopPropagation(); toggleHistoryMenu(this)" title="Options">···</button>
+      </div>
+      <div class="history-dropdown">
+        <button class="history-dropdown-btn" onclick="event.stopPropagation(); renameConversation('${conv.id}')">✏️ Rename</button>
+        <button class="history-dropdown-btn delete" onclick="event.stopPropagation(); deleteConversation('${conv.id}')">🗑️ Delete</button>
+      </div>
+    `;
+
+    container.appendChild(item);
+  });
+}
+
+function openConversation(convId) {
+  const conv = conversations.find(c => c.id === convId);
+  if (!conv) return;
+
+  activeConvId = convId;
+  localStorage.setItem(STORAGE_KEY_ACTIVE, convId);
+
+  // Switch to the conversation's mode
+  currentMode = conv.mode || 'company';
+  updateModePillsUI();
+
+  // Load its messages into current mode thread
+  threads[currentMode] = (conv.messages || []).map(m => ({ ...m }));
   renderActiveThread();
+  renderHistoryList();
+  closeSidebar();
+}
+
+function startNewConversation() {
+  activeConvId = null;
+  localStorage.removeItem(STORAGE_KEY_ACTIVE);
+  threads[currentMode] = [];
+  renderActiveThread();
+  renderHistoryList();
+  chatInput.value = '';
   chatInput.focus();
-});
+  closeSidebar();
+}
 
+function renameConversation(convId) {
+  const conv = conversations.find(c => c.id === convId);
+  if (!conv) return;
+  const newName = prompt('Enter new conversation title:', conv.title);
+  if (newName && newName.trim()) {
+    conv.title = newName.trim();
+    saveConversationsToStorage();
+    renderHistoryList();
+  }
+}
+
+function deleteConversation(convId) {
+  if (confirm('Delete this conversation from history?')) {
+    conversations = conversations.filter(c => c.id !== convId);
+    saveConversationsToStorage();
+    if (activeConvId === convId) {
+      startNewConversation();
+    } else {
+      renderHistoryList();
+    }
+  }
+}
+
+function filterHistory(term) {
+  renderHistoryList(term);
+}
+
+// ----------------------------------------------------
 // Mode Switcher (Independent Tab Isolation)
-function switchMode(newMode) {
-  if (currentMode === newMode) return;
-  currentMode = newMode;
-
-  // Update UI Pills and Sidebar Buttons
+// ----------------------------------------------------
+function updateModePillsUI() {
   if (currentMode === 'company') {
     pillCompany.classList.add('active');
     pillGeneral.classList.remove('active');
@@ -80,18 +258,59 @@ function switchMode(newMode) {
     sideBtnCompany.classList.remove('active');
     chatInput.placeholder = 'Ask a general programming or analytics question...';
   }
+}
+
+function switchMode(newMode) {
+  if (currentMode === newMode) return;
+  currentMode = newMode;
+  updateModePillsUI();
+
+  // If active conversation belongs to a different mode, reset active ID
+  if (activeConvId) {
+    const active = conversations.find(c => c.id === activeConvId);
+    if (active && active.mode !== currentMode) {
+      activeConvId = null;
+      localStorage.removeItem(STORAGE_KEY_ACTIVE);
+      threads[currentMode] = [];
+      renderHistoryList();
+    }
+  }
 
   // Switch to the selected tab's isolated thread
   renderActiveThread();
   chatInput.focus();
 }
 
-// Render the active tab's thread
+// ----------------------------------------------------
+// Welcome Screen (Option B: Minimalist on General Tab)
+// ----------------------------------------------------
+function updateWelcomeScreenContent() {
+  const cardsGrid = document.getElementById('companyCardsGrid');
+  const pillsRow = document.getElementById('companyPillsRow');
+  const heading = document.querySelector('.welcome-heading');
+
+  if (currentMode === 'company') {
+    if (heading) heading.textContent = 'Welcome to NexaData AI';
+    if (welcomeSubtitle) welcomeSubtitle.textContent = "Get accurate answers from NexaData's official documents.";
+    if (cardsGrid) cardsGrid.style.display = 'grid';
+    if (pillsRow) pillsRow.style.display = 'flex';
+  } else {
+    // Option B: Minimalist General Questions View
+    if (heading) heading.textContent = 'How can I help you today?';
+    if (welcomeSubtitle) welcomeSubtitle.textContent = 'Ask open-ended questions about Python, data science, algorithms, and general topics.';
+    if (cardsGrid) cardsGrid.style.display = 'none';
+    if (pillsRow) pillsRow.style.display = 'none';
+  }
+}
+
+// ----------------------------------------------------
+// Render Active Thread
+// ----------------------------------------------------
 function renderActiveThread() {
   const activeThread = threads[currentMode];
 
   // If no messages in this tab yet, show that tab's welcome screen
-  if (activeThread.length === 0) {
+  if (!activeThread || activeThread.length === 0) {
     chatArea.innerHTML = '';
     updateWelcomeScreenContent();
     welcomeScreen.style.display = 'flex';
@@ -114,16 +333,9 @@ function renderActiveThread() {
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-// Update Welcome Screen text based on mode
-function updateWelcomeScreenContent() {
-  if (currentMode === 'company') {
-    welcomeSubtitle.innerHTML = "Get accurate answers from NexaData's official documents.";
-  } else {
-    welcomeSubtitle.innerHTML = "Ask open-ended questions about Python, data science, databases, and general topics.";
-  }
-}
-
-// Keydown handler
+// ----------------------------------------------------
+// Inputs & Actions
+// ----------------------------------------------------
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
@@ -131,31 +343,51 @@ function handleKey(e) {
   }
 }
 
-// Auto-expand input
 function adjustInputHeight(textarea) {
   textarea.style.height = 'auto';
   textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
 }
 
-// Quick Prompt Sender
 function triggerPrompt(promptText) {
   chatInput.value = promptText;
   submitMessage();
 }
 
-// Timestamp generator
 function getTimeString() {
   const d = new Date();
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// ----------------------------------------------------
 // Send Message
+// ----------------------------------------------------
 async function submitMessage() {
   const query = chatInput.value.trim();
   if (!query || isSending) return;
 
   const modeForThisQuery = currentMode;
   const time = getTimeString();
+
+  // If there is no active conversation yet, create one now!
+  if (!activeConvId) {
+    activeConvId = 'conv_' + Date.now();
+    localStorage.setItem(STORAGE_KEY_ACTIVE, activeConvId);
+    const newConv = {
+      id: activeConvId,
+      title: query.length > 32 ? query.substring(0, 32) + '...' : query,
+      mode: modeForThisQuery,
+      messages: [],
+      updatedAt: Date.now()
+    };
+    conversations.unshift(newConv);
+  } else {
+    // Bring active conversation to top
+    const existingIdx = conversations.findIndex(c => c.id === activeConvId);
+    if (existingIdx > 0) {
+      const conv = conversations.splice(existingIdx, 1)[0];
+      conversations.unshift(conv);
+    }
+  }
 
   // Hide welcome screen
   if (welcomeScreen && welcomeScreen.style.display !== 'none') {
@@ -168,11 +400,22 @@ async function submitMessage() {
   chatInput.focus();
 
   // Save to thread and render
-  threads[modeForThisQuery].push({
+  const userMsg = {
     type: 'user',
     text: query,
     timestamp: time
-  });
+  };
+  threads[modeForThisQuery].push(userMsg);
+
+  // Sync to active conversation
+  const currentConv = conversations.find(c => c.id === activeConvId);
+  if (currentConv) {
+    currentConv.messages.push(userMsg);
+    currentConv.updatedAt = Date.now();
+    saveConversationsToStorage();
+    renderHistoryList();
+  }
+
   renderUserBubble(query, time);
 
   // Show Typing Indicator
@@ -199,14 +442,24 @@ async function submitMessage() {
     const data = await res.json();
     const replyTime = data.timestamp || getTimeString();
 
-    // Save response to thread
-    threads[modeForThisQuery].push({
+    const botMsg = {
       type: 'bot',
       reply: data.reply,
       timestamp: replyTime,
       sources: data.sources || [],
       mode: modeForThisQuery
-    });
+    };
+
+    // Save response to thread
+    threads[modeForThisQuery].push(botMsg);
+
+    // Sync to active conversation in storage
+    if (currentConv) {
+      currentConv.messages.push(botMsg);
+      currentConv.updatedAt = Date.now();
+      saveConversationsToStorage();
+      renderHistoryList();
+    }
 
     // Only render if user is still on the same tab
     if (currentMode === modeForThisQuery) {
@@ -216,13 +469,19 @@ async function submitMessage() {
   } catch (err) {
     typingElement.remove();
     const errorMsg = `⚠️ Could not connect to NexaData AI service: ${err.message}.`;
-    threads[modeForThisQuery].push({
+    const errObj = {
       type: 'bot',
       reply: errorMsg,
       timestamp: getTimeString(),
       sources: [],
       mode: modeForThisQuery
-    });
+    };
+    threads[modeForThisQuery].push(errObj);
+    if (currentConv) {
+      currentConv.messages.push(errObj);
+      saveConversationsToStorage();
+      renderHistoryList();
+    }
     if (currentMode === modeForThisQuery) {
       renderBotBubble(errorMsg, getTimeString(), [], modeForThisQuery);
     }
@@ -232,7 +491,9 @@ async function submitMessage() {
   }
 }
 
-// Render User Bubble
+// ----------------------------------------------------
+// Bubble Renderers
+// ----------------------------------------------------
 function renderUserBubble(text, timestamp) {
   const row = document.createElement('div');
   row.className = 'chat-row user';
@@ -261,7 +522,6 @@ function renderUserBubble(text, timestamp) {
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-// Render Bot Bubble matching Mockup Screen 2 & Screen 3
 function renderBotBubble(replyMarkdown, timestamp, sources, mode) {
   const row = document.createElement('div');
   row.className = 'chat-row bot';
@@ -352,7 +612,6 @@ function renderBotBubble(replyMarkdown, timestamp, sources, mode) {
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-// Toggle View Sources Accordion
 function toggleDetails(btn) {
   const card = btn.closest('.source-clean-card');
   const details = card.querySelector('div[style*="display"]');
@@ -363,7 +622,6 @@ function toggleDetails(btn) {
   }
 }
 
-// Copy Action
 function copyReply(btn) {
   const bubble = btn.closest('.chat-body').querySelector('.chat-bubble');
   navigator.clipboard.writeText(bubble.innerText);
@@ -371,12 +629,10 @@ function copyReply(btn) {
   setTimeout(() => { btn.textContent = '📋'; }, 1500);
 }
 
-// Feedback Action
 function feedback(btn, type) {
   btn.style.color = type === 'like' ? '#10B981' : '#EF4444';
 }
 
-// Typing Indicator Bubble
 function appendTypingIndicator() {
   const row = document.createElement('div');
   row.className = 'chat-row bot';
@@ -395,68 +651,25 @@ function appendTypingIndicator() {
   return row;
 }
 
-// New Conversation button (clears current tab's thread)
-btnNewChat.addEventListener('click', () => {
-  threads[currentMode] = [];
-  renderActiveThread();
-  chatInput.value = '';
-  chatInput.focus();
-  closeSidebar();
-});
-
-// Load sample from history
-function loadSampleHistory(query) {
-  chatInput.value = query;
-  submitMessage();
-  closeSidebar();
-}
-
-// Filter history items by search
-function filterHistory(term) {
-  const items = document.querySelectorAll('.history-item');
-  const lower = term.toLowerCase();
-  items.forEach(it => {
-    const title = it.querySelector('.history-title').textContent.toLowerCase();
-    it.style.display = title.includes(lower) ? 'flex' : 'none';
-  });
-}
-
-// History 3-Dot Options Menu Handlers
+// ----------------------------------------------------
+// Options & Dropdowns
+// ----------------------------------------------------
 function toggleHistoryMenu(btn) {
   const item = btn.closest('.history-item');
   const dropdown = item.querySelector('.history-dropdown');
-  // Close any other open dropdowns first
   document.querySelectorAll('.history-dropdown').forEach(d => {
     if (d !== dropdown) d.classList.remove('active');
   });
   dropdown.classList.toggle('active');
 }
 
-function renameHistoryItem(btn) {
-  const item = btn.closest('.history-item');
-  const titleEl = item.querySelector('.history-title');
-  const newName = prompt('Enter new conversation title:', titleEl.textContent);
-  if (newName && newName.trim()) {
-    titleEl.textContent = newName.trim();
-  }
-  btn.closest('.history-dropdown').classList.remove('active');
-}
-
-function deleteHistoryItem(btn) {
-  const item = btn.closest('.history-item');
-  if (confirm('Delete this conversation from history?')) {
-    item.remove();
-  }
-}
-
-// Close any open dropdowns when clicking outside
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.history-item-right') && !e.target.closest('.history-dropdown')) {
     document.querySelectorAll('.history-dropdown').forEach(d => d.classList.remove('active'));
   }
 });
 
-// Mobile sidebar drawer controls
+// Mobile Drawer
 function toggleSidebar() {
   sidebar.classList.toggle('mobile-open');
   if (sidebarOverlay) {
@@ -470,3 +683,26 @@ function closeSidebar() {
     sidebarOverlay.classList.remove('active');
   }
 }
+
+// Initialize on Load
+btnNewChat.addEventListener('click', startNewConversation);
+
+document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+  loadSavedConversations();
+  renderHistoryList();
+
+  // If active conversation was saved, load it; else show fresh thread
+  if (activeConvId) {
+    const active = conversations.find(c => c.id === activeConvId);
+    if (active) {
+      openConversation(activeConvId);
+    } else {
+      renderActiveThread();
+    }
+  } else {
+    renderActiveThread();
+  }
+
+  chatInput.focus();
+});
