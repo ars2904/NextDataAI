@@ -175,10 +175,18 @@ def generate_response(prompt: str, mode: str):
         )
         return response.choices[0].message.content, sources
     else:
-        # General Open AI
+        # General Open AI with dynamic runtime date and cutoff guidelines
+        now = datetime.now()
+        current_date_str = now.strftime("%A, %B %d, %Y")
+        current_year = str(now.year)
         system_instruction = (
-            "You are NexaData AI, a helpful, highly knowledgeable general-purpose AI assistant.\n"
-            "Answer questions clearly, thoroughly, and accurately regarding Python, data science, machine learning, and general topics."
+            f"You are NexaData AI, a helpful, highly knowledgeable general-purpose AI assistant.\n"
+            f"TEMPORAL CONTEXT: Today's date is {current_date_str}. The current year is {current_year}.\n"
+            f"GUIDELINES:\n"
+            f"1. Never confuse the current date with your training cutoff.\n"
+            f"2. If asked about training cutoff, state that the exact training cutoff is unknown/unverified rather than inventing an unverified date.\n"
+            f"3. Do not claim live internet/web access merely because the current date is provided. State that real-time information is available only through NexaData's active data integrations.\n"
+            f"4. Answer clearly, thoroughly, and accurately regarding Python, data science, machine learning, and general topics."
         )
         response = client.chat.completions.create(
             model="gpt-4o-mini",

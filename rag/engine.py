@@ -1,4 +1,4 @@
-"""RAG Engine: Knowledge Base Orchestrator for VedaNova AI."""
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from rag.pdf_loader import load_all_company_docs
@@ -48,9 +48,11 @@ class VedaNovaKnowledgeBase:
             )
 
         context_block = "\n\n".join(sources_text)
+        current_date_str = datetime.now().strftime("%A, %B %d, %Y")
 
         system_prompt = (
             "You are NexaData AI, the official intelligent assistant for NexaData Solutions.\n"
+            f"TEMPORAL CONTEXT: Today's date is {current_date_str}.\n"
             "Your answers in Company Questions mode must be STRICTLY grounded in the provided company documents.\n"
             "RULES:\n"
             "1. Answer ONLY using information explicitly mentioned in the context below.\n"
