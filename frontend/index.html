@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>NexaData AI - Ask. Analyze. Discover.</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2.2">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-<body>
+<body data-mode="company">
 
   <!-- Backdrop Overlay for Mobile Drawer -->
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -97,7 +97,7 @@
     <div class="chat-scroll-area" id="chatArea">
       
       <!-- Welcome Screen (Visible on fresh chat) -->
-      <div class="welcome-container" id="welcomeScreen">
+      <div class="welcome-container" id="welcomeScreen" data-mode="company">
         
         <!-- Glowing 3D Emblem Hero Banner -->
         <div class="hero-emblem-wrap">
@@ -216,6 +216,6 @@
 
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2.2"></script>
 </body>
 </html>

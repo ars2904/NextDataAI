@@ -572,6 +572,14 @@ body {
   margin-bottom: 26px;
 }
 
+/* Mode-based UI visibility (Option B: Minimalist General Questions View) */
+body[data-mode="general"] #companyCardsGrid,
+body[data-mode="general"] #companyPillsRow,
+.welcome-container[data-mode="general"] #companyCardsGrid,
+.welcome-container[data-mode="general"] #companyPillsRow {
+  display: none !important;
+}
+
 /* Feature Cards Grid (Desktop: 2x2, Mobile: 1-col clean stack) */
 .cards-2x2-grid {
   display: grid;

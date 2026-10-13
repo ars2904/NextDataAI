@@ -245,6 +245,11 @@ function filterHistory(term) {
 // Mode Switcher (Independent Tab Isolation)
 // ----------------------------------------------------
 function updateModePillsUI() {
+  document.body.setAttribute('data-mode', currentMode);
+  if (welcomeScreen) {
+    welcomeScreen.setAttribute('data-mode', currentMode);
+  }
+
   if (currentMode === 'company') {
     pillCompany.classList.add('active');
     pillGeneral.classList.remove('active');
@@ -285,19 +290,25 @@ function switchMode(newMode) {
 // Welcome Screen (Option B: Minimalist on General Tab)
 // ----------------------------------------------------
 function updateWelcomeScreenContent() {
-  const cardsGrid = document.getElementById('companyCardsGrid');
-  const pillsRow = document.getElementById('companyPillsRow');
-  const heading = document.querySelector('.welcome-heading');
+  document.body.setAttribute('data-mode', currentMode);
+  if (welcomeScreen) {
+    welcomeScreen.setAttribute('data-mode', currentMode);
+  }
+
+  const cardsGrid = welcomeScreen ? welcomeScreen.querySelector('#companyCardsGrid') : document.getElementById('companyCardsGrid');
+  const pillsRow = welcomeScreen ? welcomeScreen.querySelector('#companyPillsRow') : document.getElementById('companyPillsRow');
+  const heading = welcomeScreen ? welcomeScreen.querySelector('.welcome-heading') : document.querySelector('.welcome-heading');
+  const subtitle = welcomeSubtitle || (welcomeScreen ? welcomeScreen.querySelector('#welcomeSubtitle') : null);
 
   if (currentMode === 'company') {
     if (heading) heading.textContent = 'Welcome to NexaData AI';
-    if (welcomeSubtitle) welcomeSubtitle.textContent = "Get accurate answers from NexaData's official documents.";
+    if (subtitle) subtitle.textContent = "Get accurate answers from NexaData's official documents.";
     if (cardsGrid) cardsGrid.style.display = 'grid';
     if (pillsRow) pillsRow.style.display = 'flex';
   } else {
     // Option B: Minimalist General Questions View
     if (heading) heading.textContent = 'How can I help you today?';
-    if (welcomeSubtitle) welcomeSubtitle.textContent = 'Ask open-ended questions about Python, data science, algorithms, and general topics.';
+    if (subtitle) subtitle.textContent = 'Ask open-ended questions about Python, data science, algorithms, and general topics.';
     if (cardsGrid) cardsGrid.style.display = 'none';
     if (pillsRow) pillsRow.style.display = 'none';
   }
@@ -312,9 +323,9 @@ function renderActiveThread() {
   // If no messages in this tab yet, show that tab's welcome screen
   if (!activeThread || activeThread.length === 0) {
     chatArea.innerHTML = '';
-    updateWelcomeScreenContent();
     welcomeScreen.style.display = 'flex';
     chatArea.appendChild(welcomeScreen);
+    updateWelcomeScreenContent();
     return;
   }
 
@@ -688,6 +699,7 @@ function closeSidebar() {
 btnNewChat.addEventListener('click', startNewConversation);
 
 document.addEventListener('DOMContentLoaded', () => {
+  updateModePillsUI();
   initTheme();
   loadSavedConversations();
   renderHistoryList();
