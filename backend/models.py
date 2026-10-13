@@ -9,15 +9,17 @@ class SourceCitation(BaseModel):
     snippet: str
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="User's query")
+    message: str = Field("", description="User's query (can be empty if attachment provided)")
     mode: Literal["general", "company"] = Field("company", description="Active chat mode")
     session_id: Optional[str] = Field(None, description="Optional session/conversation identifier")
+    attachment: Optional[Dict[str, Any]] = Field(None, description="Optional attached file payload")
 
 class ChatResponse(BaseModel):
     reply: str
     mode: str
     sources: List[SourceCitation] = []
     timestamp: str
+    attachment_info: Optional[Dict[str, Any]] = None
 
 class PromptChip(BaseModel):
     label: str

@@ -1,7 +1,11 @@
-"""Test script for temporal context, dynamic date, knowledge cutoff, and real-time capabilities."""
-import httpx
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-client = httpx.Client(base_url="http://127.0.0.1:8000")
+from fastapi.testclient import TestClient
+from backend.main import app
+
+client = TestClient(app)
 
 questions = [
     "What is today's date?",

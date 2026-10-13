@@ -214,6 +214,11 @@ def generate_conversation_pdf(
             sources = msg.get("sources") or []
 
             clean_text = clean_markdown_text(msg_text)
+            att = msg.get("attachment") or msg.get("attachment_info") or {}
+            att_name = att.get("name") or att.get("filename")
+            if att_name:
+                att_size = f" ({att.get('size')})" if att.get("size") else ""
+                clean_text = f"<b>[📎 Attached: {att_name}{att_size}]</b><br/><br/>{clean_text}"
 
             if is_user:
                 # User Prompt Card

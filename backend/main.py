@@ -1,7 +1,8 @@
 """FastAPI Application for NexaData AI."""
 import sys
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from typing import Optional
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -12,6 +13,7 @@ sys.path.insert(0, str(BASE_DIR))
 from backend.models import ChatRequest, ChatResponse, BrandInfoResponse, PromptChip, ExportPdfRequest
 from backend.orchestrator import orchestrator
 from backend.pdf_exporter import generate_conversation_pdf
+from backend.file_handler import process_uploaded_file, validate_file, MAX_FILE_SIZE_BYTES
 from database.postgres import (
     get_products_list,
     get_master_records_list,
@@ -92,15 +94,75 @@ def chat_endpoint(request: ChatRequest):
     Dual-mode chat endpoint:
     - mode="company": Queries VedaNova PDF knowledge base via RAG.
     - mode="general": Open conversational AI.
+    Supports optional temporary attachment payload.
     """
     try:
         response = orchestrator.process_message(
             message=request.message.strip(),
-            mode=request.mode
+            mode=request.mode,
+            attachment=request.attachment
         )
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat-upload", response_model=ChatResponse)
+async def chat_upload_endpoint(
+    message: str = Form(""),
+    mode: str = Form("company"),
+    session_id: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None)
+):
+    """
+    Dual-mode chat endpoint with direct multipart file or image upload.
+    Validates file format and size (<= 10 MB) and processes in-memory.
+    Uploads remain strictly temporary and are not added to the permanent knowledge base.
+    """
+    try:
+        attachment_data = None
+        if file and file.filename:
+            file_bytes = await file.read()
+            try:
+                attachment_data = process_uploaded_file(file.filename, file_bytes)
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+            except Exception as fe:
+                raise HTTPException(status_code=400, detail=f"Failed to process file '{file.filename}': {str(fe)}")
+
+        response = orchestrator.process_message(
+            message=message.strip(),
+            mode=mode,
+            attachment=attachment_data
+        )
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/upload-preview")
+async def upload_preview_endpoint(file: UploadFile = File(...)):
+    """
+    Client pre-validation and preview endpoint for attached files/images.
+    """
+    try:
+        file_bytes = await file.read()
+        res = process_uploaded_file(file.filename, file_bytes)
+        return {
+            "status": "valid",
+            "filename": res["filename"],
+            "extension": res["extension"],
+            "size_bytes": res["size_bytes"],
+            "size_formatted": res["size_formatted"],
+            "is_image": res["is_image"],
+            "is_document": res["is_document"],
+            "summary": res.get("summary", ""),
+            "metadata": res.get("metadata", {})
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # ============================================================================
 # 📄 Conversation PDF Download Endpoint

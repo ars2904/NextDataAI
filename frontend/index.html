@@ -206,13 +206,42 @@
 
     <!-- Bottom Input Bar -->
     <div class="bottom-input-container">
+      <!-- File Preview Bar (Hidden when no attachment selected) -->
+      <div id="filePreviewBar" class="file-preview-bar" style="display: none;">
+        <div class="file-preview-content">
+          <div id="filePreviewThumb" class="file-preview-thumb">📄</div>
+          <div class="file-preview-info">
+            <span id="filePreviewName" class="file-preview-name">filename.pdf</span>
+            <span id="filePreviewMeta" class="file-preview-meta">0 KB • Ready to analyze</span>
+          </div>
+        </div>
+        <button type="button" class="file-remove-btn" onclick="removeAttachedFile()" title="Remove attached file">
+          ✕
+        </button>
+      </div>
+
       <div class="input-capsule">
-        <span class="clip-icon" title="Official Documents Grounded">📎</span>
+        <input 
+          type="file" 
+          id="fileInput" 
+          style="display: none;" 
+          accept=".pdf,.docx,.txt,.csv,.png,.jpg,.jpeg,.webp" 
+          onchange="handleFileSelect(event)"
+        >
+        <button 
+          type="button" 
+          id="btnAttach" 
+          class="clip-icon-btn" 
+          onclick="document.getElementById('fileInput').click()" 
+          title="Attach PDF, Word, TXT, CSV, or Image (Max 10 MB)"
+        >
+          📎
+        </button>
         
         <textarea 
           id="chatInput" 
           class="capsule-textarea" 
-          placeholder="Ask anything about NexaData..." 
+          placeholder="Ask anything about NexaData or upload files..." 
           rows="1"
           onkeydown="handleKey(event)"
           oninput="adjustInputHeight(this)"
@@ -229,6 +258,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=3.2"></script>
+  <script src="/static/app.js?v=3.3"></script>
 </body>
 </html>

@@ -913,6 +913,164 @@ body[data-mode="general"] #companyPillsRow,
   box-shadow: 0 8px 30px rgba(2, 132, 199, 0.2);
 }
 
+.clip-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.clip-icon-btn:hover {
+  color: var(--accent-blue);
+  transform: scale(1.08);
+}
+
+/* File Preview Bar (Staged Attachment) */
+.file-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(2, 132, 199, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 14px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  animation: slideUpFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.file-preview-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-preview-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(2, 132, 199, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.file-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.file-preview-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.file-preview-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-preview-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.file-remove-btn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.file-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  transform: scale(1.1);
+}
+
+/* Chat Bubble Attached Media Styles */
+.msg-attachment-img {
+  max-width: 260px;
+  max-height: 200px;
+  border-radius: 10px;
+  display: block;
+  margin-bottom: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.msg-attachment-img:hover {
+  transform: scale(1.02);
+}
+
+.msg-attachment-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.msg-file-icon {
+  font-size: 14px;
+}
+
+.msg-file-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.msg-file-size {
+  opacity: 0.8;
+  font-size: 11px;
+}
+
+.msg-text-content {
+  word-break: break-word;
+}
+
 .clip-icon {
   color: var(--text-dim);
   font-size: 15px;
@@ -1573,4 +1731,42 @@ body[data-mode="general"] #companyPillsRow,
 [data-theme="light"] .welcome-subheading {
   color: #475569;
 }
+
+[data-theme="light"] .clip-icon-btn {
+  color: #64748b;
+}
+
+[data-theme="light"] .clip-icon-btn:hover {
+  color: #0284c7;
+}
+
+[data-theme="light"] .file-preview-bar {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+[data-theme="light"] .file-preview-thumb {
+  background: #e0f2fe;
+}
+
+[data-theme="light"] .file-preview-name {
+  color: #0f172a;
+}
+
+[data-theme="light"] .file-preview-meta {
+  color: #64748b;
+}
+
+[data-theme="light"] .msg-attachment-pill {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+[data-theme="light"] .chat-row.user .msg-attachment-pill {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+}
+
 

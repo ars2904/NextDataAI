@@ -396,13 +396,96 @@ function renderActiveThread() {
 
   activeThread.forEach(item => {
     if (item.type === 'user') {
-      renderUserBubble(item.text, item.timestamp);
+      renderUserBubble(item.text, item.timestamp, item.attachment);
     } else if (item.type === 'bot') {
       renderBotBubble(item.reply, item.timestamp, item.sources, item.mode);
     }
   });
 
   chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+// ----------------------------------------------------
+// File & Image Attachment Handling (Max 10 MB)
+// ----------------------------------------------------
+let stagedAttachment = null;
+
+const SUPPORTED_ATTACHMENT_EXTENSIONS = ['pdf', 'docx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function handleFileSelect(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!SUPPORTED_ATTACHMENT_EXTENSIONS.includes(ext)) {
+    alert(`Unsupported file format '.${ext}'. Please select a PDF, DOCX, TXT, CSV, PNG, JPG, or WEBP file.`);
+    event.target.value = '';
+    return;
+  }
+
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    alert(`File is too large (${formatFileSize(file.size)}). The maximum allowed file size is 10 MB.`);
+    event.target.value = '';
+    return;
+  }
+
+  const isImage = ['png', 'jpg', 'jpeg', 'webp'].includes(ext);
+  let previewUrl = null;
+
+  if (isImage) {
+    previewUrl = URL.createObjectURL(file);
+  }
+
+  stagedAttachment = {
+    file: file,
+    name: file.name,
+    size: formatFileSize(file.size),
+    sizeBytes: file.size,
+    ext: ext,
+    isImage: isImage,
+    previewUrl: previewUrl
+  };
+
+  // Update UI preview bar
+  const bar = document.getElementById('filePreviewBar');
+  const thumb = document.getElementById('filePreviewThumb');
+  const nameEl = document.getElementById('filePreviewName');
+  const metaEl = document.getElementById('filePreviewMeta');
+
+  if (bar && thumb && nameEl && metaEl) {
+    nameEl.textContent = file.name;
+    metaEl.textContent = `${formatFileSize(file.size)} • Ready to analyze`;
+
+    if (isImage && previewUrl) {
+      thumb.innerHTML = `<img src="${previewUrl}" alt="Preview">`;
+    } else {
+      let icon = '📄';
+      if (ext === 'csv') icon = '📊';
+      else if (ext === 'docx') icon = '📑';
+      else if (ext === 'txt') icon = '📝';
+      thumb.innerHTML = icon;
+    }
+    bar.style.display = 'flex';
+  }
+}
+
+function removeAttachedFile() {
+  if (stagedAttachment && stagedAttachment.previewUrl) {
+    URL.revokeObjectURL(stagedAttachment.previewUrl);
+  }
+  stagedAttachment = null;
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) fileInput.value = '';
+
+  const bar = document.getElementById('filePreviewBar');
+  if (bar) bar.style.display = 'none';
 }
 
 // ----------------------------------------------------
@@ -435,10 +518,14 @@ function getTimeString() {
 // ----------------------------------------------------
 async function submitMessage() {
   const query = chatInput.value.trim();
-  if (!query || isSending) return;
+  if ((!query && !stagedAttachment) || isSending) return;
 
   const modeForThisQuery = currentMode;
   const time = getTimeString();
+  const attachmentToSend = stagedAttachment;
+
+  // Title for conversation
+  const convTitle = query || (attachmentToSend ? `File: ${attachmentToSend.name}` : 'New Conversation');
 
   // If there is no active conversation yet, create one now!
   if (!activeConvId) {
@@ -446,7 +533,7 @@ async function submitMessage() {
     localStorage.setItem(STORAGE_KEY_ACTIVE, activeConvId);
     const newConv = {
       id: activeConvId,
-      title: query.length > 32 ? query.substring(0, 32) + '...' : query,
+      title: convTitle.length > 32 ? convTitle.substring(0, 32) + '...' : convTitle,
       mode: modeForThisQuery,
       messages: [],
       updatedAt: Date.now()
@@ -471,11 +558,20 @@ async function submitMessage() {
   chatInput.style.height = '24px';
   chatInput.focus();
 
+  // Reset file staging UI immediately so user sees clear input
+  removeAttachedFile();
+
   // Save to thread and render
   const userMsg = {
     type: 'user',
     text: query,
-    timestamp: time
+    timestamp: time,
+    attachment: attachmentToSend ? {
+      name: attachmentToSend.name,
+      size: attachmentToSend.size,
+      isImage: attachmentToSend.isImage,
+      dataUrl: attachmentToSend.previewUrl
+    } : null
   };
   threads[modeForThisQuery].push(userMsg);
 
@@ -488,7 +584,7 @@ async function submitMessage() {
     renderHistoryList();
   }
 
-  renderUserBubble(query, time);
+  renderUserBubble(query, time, userMsg.attachment);
 
   // Show Typing Indicator
   const typingElement = appendTypingIndicator();
@@ -496,19 +592,35 @@ async function submitMessage() {
   btnSend.disabled = true;
 
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: query,
-        mode: modeForThisQuery
-      })
-    });
+    let res;
+    if (attachmentToSend && attachmentToSend.file) {
+      // Multipart upload with file
+      const formData = new FormData();
+      formData.append('message', query || '');
+      formData.append('mode', modeForThisQuery);
+      formData.append('file', attachmentToSend.file);
+
+      res = await fetch('/api/chat-upload', {
+        method: 'POST',
+        body: formData
+      });
+    } else {
+      // Standard JSON chat request
+      res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          mode: modeForThisQuery
+        })
+      });
+    }
 
     typingElement.remove();
 
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.detail || `HTTP ${res.status}`);
     }
 
     const data = await res.json();
@@ -519,7 +631,8 @@ async function submitMessage() {
       reply: data.reply,
       timestamp: replyTime,
       sources: data.sources || [],
-      mode: modeForThisQuery
+      mode: modeForThisQuery,
+      attachment_info: data.attachment_info || null
     };
 
     // Save response to thread
@@ -540,7 +653,7 @@ async function submitMessage() {
 
   } catch (err) {
     typingElement.remove();
-    const errorMsg = `⚠️ Could not connect to NexaData AI service: ${err.message}.`;
+    const errorMsg = `⚠️ NexaData AI: ${err.message}.`;
     const errObj = {
       type: 'bot',
       reply: errorMsg,
@@ -560,13 +673,14 @@ async function submitMessage() {
   } finally {
     isSending = false;
     btnSend.disabled = false;
+    chatInput.focus();
   }
 }
 
 // ----------------------------------------------------
 // Bubble Renderers
 // ----------------------------------------------------
-function renderUserBubble(text, timestamp) {
+function renderUserBubble(text, timestamp, attachment = null) {
   const row = document.createElement('div');
   row.className = 'chat-row user';
 
@@ -579,7 +693,32 @@ function renderUserBubble(text, timestamp) {
 
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
-  bubble.textContent = text;
+
+  if (attachment) {
+    if (attachment.isImage && attachment.dataUrl) {
+      const img = document.createElement('img');
+      img.src = attachment.dataUrl;
+      img.className = 'msg-attachment-img';
+      img.alt = attachment.name || 'Uploaded Image';
+      bubble.appendChild(img);
+    } else {
+      const pill = document.createElement('div');
+      pill.className = 'msg-attachment-pill';
+      pill.innerHTML = `
+        <span class="msg-file-icon">📎</span>
+        <span class="msg-file-name">${escapeHtml(attachment.name || 'File')}</span>
+        <span class="msg-file-size">(${escapeHtml(attachment.size || '')})</span>
+      `;
+      bubble.appendChild(pill);
+    }
+  }
+
+  if (text) {
+    const textNode = document.createElement('div');
+    textNode.className = 'msg-text-content';
+    textNode.textContent = text;
+    bubble.appendChild(textNode);
+  }
 
   const time = document.createElement('div');
   time.className = 'chat-time';

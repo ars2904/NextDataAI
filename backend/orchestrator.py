@@ -26,8 +26,83 @@ class ChatOrchestrator:
     def _get_timestamp(self) -> str:
         return datetime.now().strftime("%I:%M %p")
 
-    def handle_company_question(self, message: str) -> ChatResponse:
-        """Query company PDF documents using RAG or direct database records."""
+    def handle_company_question(self, message: str, attachment: Optional[Dict[str, Any]] = None) -> ChatResponse:
+        """Query company PDF documents using RAG or direct database records, with optional temporary attachment."""
+        attachment_sources = []
+        attachment_info = None
+
+        if attachment:
+            attachment_info = {
+                "filename": attachment.get("filename"),
+                "summary": attachment.get("summary"),
+                "is_image": attachment.get("is_image", False),
+                "size_formatted": attachment.get("size_formatted")
+            }
+            label = "Attached Image" if attachment.get("is_image") else "Attached File"
+            attachment_sources.append(SourceCitation(
+                document=f"{label}: {attachment.get('filename')}",
+                page=1,
+                score=1.0,
+                snippet=attachment.get("summary", "User uploaded temporary attachment")
+            ))
+
+            # If user uploaded an image in company mode
+            if attachment.get("is_image"):
+                prompt_text = message.strip() if message.strip() else "Analyze this image in the context of NexaData operations, describe its contents, and explain key takeaways."
+                if self.client:
+                    try:
+                        response = self.client.chat.completions.create(
+                            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are NexaData AI. Analyze the uploaded image. "
+                                        "Relate the image content to NexaData enterprise solutions or answer the user query accurately."
+                                    )
+                                },
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": prompt_text},
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": f"data:{attachment['mime_type']};base64,{attachment['b64_image']}"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            temperature=0.2,
+                            max_tokens=700
+                        )
+                        reply = response.choices[0].message.content.strip()
+                        return ChatResponse(
+                            reply=reply,
+                            mode="company",
+                            sources=attachment_sources,
+                            timestamp=self._get_timestamp(),
+                            attachment_info=attachment_info
+                        )
+                    except Exception:
+                        pass
+                
+                # Offline image response
+                reply = (
+                    f"🖼️ **Temporary Image Received:** `{attachment['filename']}`\n"
+                    f"- **Summary:** {attachment.get('summary')}\n\n"
+                    f"The image was validated and processed in-memory for this query. It is not saved to the permanent knowledge base.\n\n"
+                    f"*(Configure `OPENAI_API_KEY` for live multimodal vision analysis).* "
+                )
+                return ChatResponse(
+                    reply=reply,
+                    mode="company",
+                    sources=attachment_sources,
+                    timestamp=self._get_timestamp(),
+                    attachment_info=attachment_info
+                )
+
         # 1. First check if this is a live Database query (Products, Clients, Transactions)
         db_content = query_database_smart(message)
         if db_content:
@@ -38,18 +113,19 @@ class ChatOrchestrator:
                     score=0.99,
                     snippet="Live relational query executed on NexaData master schema."
                 )
-            ]
+            ] + attachment_sources
             return ChatResponse(
                 reply=db_content,
                 mode="company",
                 sources=sources,
-                timestamp=self._get_timestamp()
+                timestamp=self._get_timestamp(),
+                attachment_info=attachment_info
             )
 
         # 2. Query company PDF documents using RAG
-        context_chunks = knowledge_base.retrieve_context(message, top_k=2)
+        context_chunks = knowledge_base.retrieve_context(message, top_k=2) if message else []
 
-        sources = []
+        sources = list(attachment_sources)
         for c in context_chunks:
             sources.append(SourceCitation(
                 document=c["source"],
@@ -65,7 +141,67 @@ class ChatOrchestrator:
                 reply=f"{temporal_reply}\n\n*(For general open-ended inquiries, you can also use the General Questions tab).* ",
                 mode="company",
                 sources=[],
-                timestamp=self._get_timestamp()
+                timestamp=self._get_timestamp(),
+                attachment_info=attachment_info
+            )
+
+        # If attachment is a document or CSV in Company mode
+        if attachment and attachment.get("is_document"):
+            user_prompt = message.strip() if message.strip() else f"Analyze this uploaded {attachment['extension'].upper()} document and summarize its relevance to NexaData operations."
+            if self.client:
+                try:
+                    kb_text = "\n\n".join([f"[{c['source']} P{c['page']}]: {c['text']}" for c in context_chunks])
+                    full_prompt = (
+                        f"TEMPORARY UPLOADED FILE ({attachment['filename']}):\n"
+                        f"```\n{attachment.get('text_content', '')[:25000]}\n```\n\n"
+                        f"OFFICIAL NEXADATA DOCUMENTS:\n{kb_text}\n\n"
+                        f"USER QUERY: {user_prompt}"
+                    )
+                    response = self.client.chat.completions.create(
+                        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are NexaData AI. Answer the user query using the attached temporary document "
+                                    "and official NexaData company knowledge. Keep the uploaded file temporary and clearly distinguish it."
+                                )
+                            },
+                            {"role": "user", "content": full_prompt}
+                        ],
+                        temperature=0.2,
+                        max_tokens=700
+                    )
+                    reply = response.choices[0].message.content.strip()
+                    return ChatResponse(
+                        reply=reply,
+                        mode="company",
+                        sources=sources,
+                        timestamp=self._get_timestamp(),
+                        attachment_info=attachment_info
+                    )
+                except Exception:
+                    pass
+
+            # Offline document / CSV in Company mode
+            if attachment.get("extension") == "csv":
+                reply = (
+                    f"📊 **Temporary CSV Attached:** `{attachment['filename']}`\n\n"
+                    f"{attachment.get('text_content', '')}\n\n"
+                    f"*(File analyzed in-memory. Not added to permanent company knowledge base).* "
+                )
+            else:
+                reply = (
+                    f"📄 **Temporary Document Attached:** `{attachment['filename']}` ({attachment.get('summary')})\n\n"
+                    f"**Extracted Text Preview:**\n{attachment.get('text_content', '')[:800]}...\n\n"
+                    f"*(Temporary file processed in-memory for this query).* "
+                )
+            return ChatResponse(
+                reply=reply,
+                mode="company",
+                sources=sources,
+                timestamp=self._get_timestamp(),
+                attachment_info=attachment_info
             )
 
         if not context_chunks:
@@ -77,7 +213,8 @@ class ChatOrchestrator:
                 reply=reply,
                 mode="company",
                 sources=[],
-                timestamp=self._get_timestamp()
+                timestamp=self._get_timestamp(),
+                attachment_info=attachment_info
             )
 
         # If OpenAI client available, generate grounded natural response
@@ -98,7 +235,8 @@ class ChatOrchestrator:
                     reply=reply,
                     mode="company",
                     sources=sources,
-                    timestamp=self._get_timestamp()
+                    timestamp=self._get_timestamp(),
+                    attachment_info=attachment_info
                 )
             except Exception:
                 pass  # Fallback to local grounded text
@@ -113,7 +251,8 @@ class ChatOrchestrator:
             reply=reply,
             mode="company",
             sources=sources,
-            timestamp=self._get_timestamp()
+            timestamp=self._get_timestamp(),
+            attachment_info=attachment_info
         )
 
     def _get_dynamic_context(self) -> Dict[str, Any]:
@@ -176,8 +315,143 @@ class ChatOrchestrator:
 
         return None
 
-    def handle_general_question(self, message: str) -> ChatResponse:
-        """Answer general-purpose AI question or direct database query."""
+    def handle_general_question(self, message: str, attachment: Optional[Dict[str, Any]] = None) -> ChatResponse:
+        """Answer general-purpose AI question or direct database query, with vision and document analysis."""
+        attachment_sources = []
+        attachment_info = None
+
+        if attachment:
+            attachment_info = {
+                "filename": attachment.get("filename"),
+                "summary": attachment.get("summary"),
+                "is_image": attachment.get("is_image", False),
+                "size_formatted": attachment.get("size_formatted")
+            }
+            label = "Attached Image" if attachment.get("is_image") else "Attached File"
+            attachment_sources.append(SourceCitation(
+                document=f"{label}: {attachment.get('filename')}",
+                page=1,
+                score=1.0,
+                snippet=attachment.get("summary", "Uploaded attachment")
+            ))
+
+            # 1. Handle Image with Vision Model
+            if attachment.get("is_image"):
+                prompt_text = message.strip() if message.strip() else "Analyze this image thoroughly. Describe all elements, extract or transcribe any text or data visualizations, and provide key takeaways."
+                if self.client:
+                    try:
+                        response = self.client.chat.completions.create(
+                            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        self._build_general_system_prompt() + 
+                                        "\nYou have advanced multimodal vision capabilities. Inspect the provided image in detail, identify objects, interpret charts/data, and answer the user query with structure and clarity."
+                                    )
+                                },
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": prompt_text},
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": f"data:{attachment['mime_type']};base64,{attachment['b64_image']}"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            temperature=0.3,
+                            max_tokens=800
+                        )
+                        reply = response.choices[0].message.content.strip()
+                        return ChatResponse(
+                            reply=reply,
+                            mode="general",
+                            sources=attachment_sources,
+                            timestamp=self._get_timestamp(),
+                            attachment_info=attachment_info
+                        )
+                    except Exception:
+                        pass
+                
+                # Offline image response
+                reply = (
+                    f"🖼️ **Image Analyzed:** `{attachment['filename']}`\n\n"
+                    f"- **Summary:** {attachment.get('summary')}\n"
+                    f"- **Dimensions:** {attachment.get('metadata', {}).get('width')} x {attachment.get('metadata', {}).get('height')} px\n"
+                    f"- **Size:** {attachment.get('size_formatted')}\n\n"
+                    f"The image was validated and verified in memory. "
+                    f"*(Configure `OPENAI_API_KEY` in `.env` to enable live multimodal vision reasoning).* "
+                )
+                return ChatResponse(
+                    reply=reply,
+                    mode="general",
+                    sources=attachment_sources,
+                    timestamp=self._get_timestamp(),
+                    attachment_info=attachment_info
+                )
+
+            # 2. Handle Document / CSV / Data in General Mode
+            if attachment.get("is_document"):
+                user_prompt = message.strip() if message.strip() else f"Analyze this {attachment['extension'].upper()} file, summarize its contents, and provide key insights and takeaways."
+                if self.client:
+                    try:
+                        doc_text = attachment.get("text_content", "")[:35000]
+                        full_prompt = (
+                            f"ATTACHED FILE: {attachment['filename']} ({attachment.get('summary')})\n"
+                            f"CONTENT:\n```\n{doc_text}\n```\n\n"
+                            f"USER INSTRUCTION: {user_prompt}"
+                        )
+                        response = self.client.chat.completions.create(
+                            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        self._build_general_system_prompt() + 
+                                        "\nYou are analyzing a user-uploaded file. Provide accurate, well-structured summaries and data insights."
+                                    )
+                                },
+                                {"role": "user", "content": full_prompt}
+                            ],
+                            temperature=0.2,
+                            max_tokens=800
+                        )
+                        reply = response.choices[0].message.content.strip()
+                        return ChatResponse(
+                            reply=reply,
+                            mode="general",
+                            sources=attachment_sources,
+                            timestamp=self._get_timestamp(),
+                            attachment_info=attachment_info
+                        )
+                    except Exception:
+                        pass
+
+                # Offline Document / CSV response
+                if attachment.get("extension") == "csv":
+                    reply = (
+                        f"📊 **CSV Data Analysis for `{attachment['filename']}`**\n\n"
+                        f"{attachment.get('text_content', '')}\n\n"
+                        f"*(Analyzed in-memory using Pandas. Configure `OPENAI_API_KEY` for live generative data exploration).* "
+                    )
+                else:
+                    reply = (
+                        f"📄 **Document Summary for `{attachment['filename']}`** ({attachment.get('summary')})\n\n"
+                        f"**Text Content:**\n\n{attachment.get('text_content', '')[:1200]}...\n\n"
+                        f"*(Extracted in-memory. Configure `OPENAI_API_KEY` for interactive conversational Q&A).* "
+                    )
+                return ChatResponse(
+                    reply=reply,
+                    mode="general",
+                    sources=attachment_sources,
+                    timestamp=self._get_timestamp(),
+                    attachment_info=attachment_info
+                )
+
         # 1. Check for database query
         db_content = query_database_smart(message)
         if db_content and any(k in message.lower() for k in ["database", "transaction", "client master", "product"]):
@@ -185,7 +459,8 @@ class ChatOrchestrator:
                 reply=db_content,
                 mode="general",
                 sources=[],
-                timestamp=self._get_timestamp()
+                timestamp=self._get_timestamp(),
+                attachment_info=attachment_info
             )
 
         # 2. Check for dynamic temporal / capability query (deterministic resolution)
@@ -195,7 +470,8 @@ class ChatOrchestrator:
                 reply=temporal_reply,
                 mode="general",
                 sources=[],
-                timestamp=self._get_timestamp()
+                timestamp=self._get_timestamp(),
+                attachment_info=attachment_info
             )
 
         # 3. If OpenAI client available, invoke with dynamic temporal system prompt
@@ -219,7 +495,8 @@ class ChatOrchestrator:
                     reply=reply,
                     mode="general",
                     sources=[],
-                    timestamp=self._get_timestamp()
+                    timestamp=self._get_timestamp(),
+                    attachment_info=attachment_info
                 )
             except Exception:
                 pass
@@ -236,15 +513,16 @@ class ChatOrchestrator:
             reply=reply,
             mode="general",
             sources=[],
-            timestamp=self._get_timestamp()
+            timestamp=self._get_timestamp(),
+            attachment_info=attachment_info
         )
 
-    def process_message(self, message: str, mode: str = "company") -> ChatResponse:
-        """Route message based on selected tab mode."""
+    def process_message(self, message: str, mode: str = "company", attachment: Optional[Dict[str, Any]] = None) -> ChatResponse:
+        """Route message based on selected tab mode with optional temporary attachment."""
         if mode == "company":
-            return self.handle_company_question(message)
+            return self.handle_company_question(message, attachment=attachment)
         else:
-            return self.handle_general_question(message)
+            return self.handle_general_question(message, attachment=attachment)
 
 # Global orchestrator
 orchestrator = ChatOrchestrator()
