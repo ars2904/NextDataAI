@@ -5,12 +5,13 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from rag.engine import knowledge_base
 from backend.models import SourceCitation, ChatResponse
+from database.postgres import query_database_smart
 
 load_dotenv()
 
 class ChatOrchestrator:
     """
-    Coordinates between General Model and Company PDF RAG Engine.
+    Coordinates between General Model, Company PDF RAG Engine, and PostgreSQL Database.
     """
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY", "")
@@ -26,7 +27,26 @@ class ChatOrchestrator:
         return datetime.now().strftime("%I:%M %p")
 
     def handle_company_question(self, message: str) -> ChatResponse:
-        """Query company PDF documents using RAG."""
+        """Query company PDF documents using RAG or direct database records."""
+        # 1. First check if this is a live Database query (Products, Clients, Transactions)
+        db_content = query_database_smart(message)
+        if db_content:
+            sources = [
+                SourceCitation(
+                    document="PostgreSQL Enterprise Database (Live Records)",
+                    page=1,
+                    score=0.99,
+                    snippet="Live relational query executed on NexaData master schema."
+                )
+            ]
+            return ChatResponse(
+                reply=db_content,
+                mode="company",
+                sources=sources,
+                timestamp=self._get_timestamp()
+            )
+
+        # 2. Query company PDF documents using RAG
         context_chunks = knowledge_base.retrieve_context(message, top_k=2)
 
         sources = []
@@ -87,7 +107,16 @@ class ChatOrchestrator:
         )
 
     def handle_general_question(self, message: str) -> ChatResponse:
-        """Answer general-purpose AI question."""
+        """Answer general-purpose AI question or direct database query."""
+        db_content = query_database_smart(message)
+        if db_content and any(k in message.lower() for k in ["database", "transaction", "client master", "product"]):
+            return ChatResponse(
+                reply=db_content,
+                mode="general",
+                sources=[],
+                timestamp=self._get_timestamp()
+            )
+
         if self.client:
             try:
                 response = self.client.chat.completions.create(

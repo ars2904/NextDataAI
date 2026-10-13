@@ -30,3 +30,9 @@ class BrandInfoResponse(BaseModel):
     prompt_chips: List[PromptChip]
     indexed_documents: List[str]
     total_document_chunks: int
+
+class ExportPdfRequest(BaseModel):
+    title: Optional[str] = "NexaData Conversation"
+    mode: Optional[str] = "company"
+    messages: List[Dict[str, Any]] = []
+    export_time: Optional[str] = None

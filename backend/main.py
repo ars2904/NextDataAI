@@ -4,13 +4,22 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from backend.models import ChatRequest, ChatResponse, BrandInfoResponse, PromptChip
+from backend.models import ChatRequest, ChatResponse, BrandInfoResponse, PromptChip, ExportPdfRequest
 from backend.orchestrator import orchestrator
+from backend.pdf_exporter import generate_conversation_pdf
+from database.postgres import (
+    get_products_list,
+    get_master_records_list,
+    get_transactions_list,
+    get_analytics_summary,
+    search_records,
+    db_engine
+)
 from rag.engine import knowledge_base
 
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -92,3 +101,60 @@ def chat_endpoint(request: ChatRequest):
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# 📄 Conversation PDF Download Endpoint
+# ============================================================================
+@app.post("/api/export-pdf")
+def export_pdf_endpoint(payload: ExportPdfRequest):
+    """
+    Generate and download a branded PDF transcript of the conversation.
+    """
+    try:
+        pdf_bytes = generate_conversation_pdf(
+            title=payload.title or "NexaData Conversation",
+            mode=payload.mode or "company",
+            messages=payload.messages or [],
+            export_time=payload.export_time
+        )
+        clean_title = "".join(c for c in (payload.title or "Chat") if c.isalnum() or c in (" ", "_", "-")).strip()
+        filename = f"NexaData_{clean_title.replace(' ', '_')}.pdf"
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate conversation PDF: {str(e)}")
+
+# ============================================================================
+# 🗄️ PostgreSQL Database Demonstration & Query Endpoints
+# ============================================================================
+@app.get("/api/db/status")
+def get_db_status():
+    """Returns database connection status and analytics summary."""
+    return get_analytics_summary()
+
+@app.get("/api/db/products")
+def get_products():
+    """Retrieve all 5 product catalog records."""
+    return {"products": get_products_list()}
+
+@app.get("/api/db/masters")
+def get_masters():
+    """Retrieve all 5 client master records."""
+    return {"clients": get_master_records_list()}
+
+@app.get("/api/db/transactions")
+def get_transactions(limit: int = 50, client_code: str = None, status: str = None):
+    """Retrieve all 20 business transactions."""
+    return {"transactions": get_transactions_list(limit=limit, client_code=client_code, status=status)}
+
+@app.get("/api/db/search")
+def search_db(q: str):
+    """Search records across products, clients, and transactions."""
+    return search_records(q)
+

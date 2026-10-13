@@ -695,6 +695,75 @@ function closeSidebar() {
   }
 }
 
+// ----------------------------------------------------
+// PDF Export for Active Conversation
+// ----------------------------------------------------
+async function exportCurrentChatPdf() {
+  const activeThread = threads[currentMode] || [];
+  if (activeThread.length === 0) {
+    alert("The current conversation is empty. Please ask a question before exporting to PDF.");
+    return;
+  }
+
+  const exportBtn = document.getElementById('btnExportPdf');
+  const originalHtml = exportBtn ? exportBtn.innerHTML : '';
+  if (exportBtn) {
+    exportBtn.disabled = true;
+    exportBtn.innerHTML = '<span>⏳ Preparing PDF...</span>';
+  }
+
+  try {
+    let title = "NexaData Conversation";
+    if (activeConvId) {
+      const active = conversations.find(c => c.id === activeConvId);
+      if (active && active.title) title = active.title;
+    } else if (activeThread.length > 0) {
+      const firstUser = activeThread.find(m => m.type === 'user');
+      if (firstUser && firstUser.text) {
+        title = firstUser.text.slice(0, 35);
+      }
+    }
+
+    const payload = {
+      title: title,
+      mode: currentMode,
+      messages: activeThread,
+      export_time: new Date().toLocaleString()
+    };
+
+    const res = await fetch('/api/export-pdf', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server returned status ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = url;
+    downloadAnchor.download = `NexaData_${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    document.body.removeChild(downloadAnchor);
+    window.URL.revokeObjectURL(url);
+    closeSidebar();
+  } catch (err) {
+    console.error('Error exporting PDF:', err);
+    alert('Could not export conversation PDF. Please check server logs and try again.');
+  } finally {
+    if (exportBtn) {
+      exportBtn.disabled = false;
+      exportBtn.innerHTML = originalHtml;
+    }
+  }
+}
+
 // Initialize on Load
 btnNewChat.addEventListener('click', startNewConversation);
 
