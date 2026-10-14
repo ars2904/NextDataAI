@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>NexaData AI - Ask. Analyze. Discover.</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=3.2">
+  <link rel="stylesheet" href="/static/style.css?v=3.3">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body data-mode="company">
@@ -73,35 +73,47 @@
   <!-- Main View -->
   <main class="main-wrapper">
     
-    <!-- Top Nav (Matching Screen 5 Mockup on Mobile) -->
+    <!-- Top Nav: Brand, Instant PDF Export, & Theme Toggle -->
     <div class="top-nav">
-      <!-- Hamburger Menu on Mobile -->
-      <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
-
-      <!-- Center Logo on Mobile -->
-      <div class="mobile-nav-brand">
-        <img src="/static/logo_dark.png" id="mobileLogo" alt="NexaData AI" class="mobile-brand-logo-img">
+      <!-- Left: Mobile Menu & Brand Logo -->
+      <div class="top-nav-left">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
+        <div class="mobile-nav-brand">
+          <img src="/static/logo_dark.png" id="mobileLogo" alt="NexaData AI" class="mobile-brand-logo-img">
+        </div>
       </div>
 
-      <!-- Dual-Pill Switcher (Adaptive Desktop / Mobile Labels) -->
-      <div class="dual-pills">
-        <button class="pill-btn active" id="pillCompany" onclick="switchMode('company')">
-          <span>📄</span>
-          <span class="pill-text-desktop">Company Questions</span>
-          <span class="pill-text-mobile">Company</span>
-        </button>
-        <button class="pill-btn" id="pillGeneral" onclick="switchMode('general')">
-          <span>💬</span>
-          <span class="pill-text-desktop">General Questions</span>
-          <span class="pill-text-mobile">General</span>
-        </button>
-      </div>
-
-      <!-- Theme Switcher Button -->
+      <!-- Right: Export Chat PDF & Theme Switcher -->
       <div class="top-nav-right">
+        <button class="top-nav-export-btn" id="btnTopNavExport" onclick="exportCurrentChatPdf()" title="Download current conversation as a branded PDF">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="12" y1="18" x2="12" y2="12"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+          </svg>
+          <span class="export-btn-text">Export Chat</span>
+        </button>
+
         <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Switch Theme">
           <span id="themeToggleIcon">🌙</span>
           <span class="theme-toggle-label">Dark</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mode Switcher Sub-Header Bar (Positioned below Top Nav) -->
+    <div class="mode-bar" id="modeBar">
+      <div class="mode-bar-container">
+        <button class="mode-bar-btn active" id="pillCompany" onclick="switchMode('company')">
+          <span class="mode-icon">📄</span>
+          <span class="pill-text-desktop">Company Questions</span>
+          <span class="pill-text-mobile">Company Questions</span>
+        </button>
+        <button class="mode-bar-btn" id="pillGeneral" onclick="switchMode('general')">
+          <span class="mode-icon">💬</span>
+          <span class="pill-text-desktop">General Questions</span>
+          <span class="pill-text-mobile">General Questions</span>
         </button>
       </div>
     </div>
@@ -290,6 +302,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=3.4"></script>
+  <script src="/static/app.js?v=3.5"></script>
 </body>
 </html>

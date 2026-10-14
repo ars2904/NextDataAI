@@ -1124,12 +1124,16 @@ async function exportCurrentChatPdf() {
     return;
   }
 
-  const exportBtn = document.getElementById('btnExportPdf');
-  const originalHtml = exportBtn ? exportBtn.innerHTML : '';
-  if (exportBtn) {
-    exportBtn.disabled = true;
-    exportBtn.innerHTML = '<span>⏳ Preparing PDF...</span>';
-  }
+  const exportBtns = [
+    document.getElementById('btnExportPdf'),
+    document.getElementById('btnTopNavExport')
+  ].filter(Boolean);
+
+  const originalStates = exportBtns.map(b => ({ btn: b, html: b.innerHTML }));
+  exportBtns.forEach(b => {
+    b.disabled = true;
+    b.innerHTML = '<span style="display:flex;align-items:center;gap:6px;">⏳ <span class="export-btn-text">Preparing...</span></span>';
+  });
 
   try {
     let title = "NexaData Conversation";
@@ -1176,10 +1180,10 @@ async function exportCurrentChatPdf() {
     console.error('Error exporting PDF:', err);
     alert('Could not export conversation PDF. Please check server logs and try again.');
   } finally {
-    if (exportBtn) {
-      exportBtn.disabled = false;
-      exportBtn.innerHTML = originalHtml;
-    }
+    originalStates.forEach(item => {
+      item.btn.disabled = false;
+      item.btn.innerHTML = item.html;
+    });
   }
 }
 
