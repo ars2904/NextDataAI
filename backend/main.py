@@ -1,8 +1,11 @@
 """FastAPI Application for NexaData AI."""
 import sys
 from pathlib import Path
-from typing import Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from typing import Optional, Dict, Any, List
+import json
+import time
+from collections import defaultdict
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -27,7 +30,11 @@ from database.postgres import (
     get_transactions_list,
     get_analytics_summary,
     search_records,
-    db_engine
+    db_engine,
+    save_chat_session,
+    get_chat_sessions,
+    get_chat_session_messages,
+    delete_chat_session
 )
 from rag.engine import knowledge_base
 
@@ -38,6 +45,36 @@ app = FastAPI(
     description="Dual-Mode Conversational API (General LLM & Company PDF RAG)",
     version="1.0.0"
 )
+
+# Phase 5: Production In-Memory IP Rate Limiter
+RATE_LIMIT_BUCKETS = defaultdict(list)
+RATE_LIMIT_RULES = {
+    "/api/chat": {"window": 60, "max_requests": 60},
+    "/api/chat-stream": {"window": 60, "max_requests": 60},
+    "/api/chat-upload": {"window": 60, "max_requests": 25},
+    "/api/export-pdf": {"window": 60, "max_requests": 15},
+}
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    path = request.url.path
+
+    if path in RATE_LIMIT_RULES:
+        rule = RATE_LIMIT_RULES[path]
+        now = time.time()
+        key = f"{client_ip}:{path}"
+        RATE_LIMIT_BUCKETS[key] = [t for t in RATE_LIMIT_BUCKETS[key] if now - t < rule["window"]]
+        if len(RATE_LIMIT_BUCKETS[key]) >= rule["max_requests"]:
+            return Response(
+                content=json.dumps({"detail": "Rate limit exceeded. Please wait a moment before sending another request."}),
+                status_code=429,
+                media_type="application/json"
+            )
+        RATE_LIMIT_BUCKETS[key].append(now)
+
+    response = await call_next(request)
+    return response
 
 # Enable CORS for external embeddable website widget support
 app.add_middleware(
@@ -283,6 +320,38 @@ def export_pdf_endpoint(payload: ExportPdfRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate conversation PDF: {str(e)}")
+
+# ============================================================================
+# Phase 4: PostgreSQL Server-Side Chat Persistence & Sync Endpoints
+# ============================================================================
+@app.get("/api/conversations")
+def list_conversations():
+    """List recent persistent chat sessions."""
+    return {"conversations": get_chat_sessions(limit=50)}
+
+@app.post("/api/conversations")
+def save_conversation(payload: Dict[str, Any]):
+    """Sync/save conversation session and messages."""
+    session_id = payload.get("id") or payload.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing conversation session_id")
+    title = payload.get("title", "New Conversation")
+    mode = payload.get("mode", "company")
+    messages = payload.get("messages", [])
+    res = save_chat_session(session_id=session_id, title=title, mode=mode, messages=messages)
+    return {"status": "saved", "conversation": res}
+
+@app.get("/api/conversations/{session_id}")
+def get_conversation(session_id: str):
+    """Retrieve all messages for a specific conversation session."""
+    msgs = get_chat_session_messages(session_id)
+    return {"session_id": session_id, "messages": msgs}
+
+@app.delete("/api/conversations/{session_id}")
+def delete_conversation_endpoint(session_id: str):
+    """Delete a conversation session and all its messages."""
+    success = delete_chat_session(session_id)
+    return {"status": "deleted" if success else "not_found", "session_id": session_id}
 
 # ============================================================================
 # 🗄️ PostgreSQL Database Demonstration & Query Endpoints

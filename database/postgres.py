@@ -539,6 +539,61 @@ class FAQ(Base):
         }
 
 
+class ChatSession(Base):
+    """Server-side persistent chat sessions for cross-device sync."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(80), unique=True, nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    mode = Column(String(40), default="company")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.session_id,
+            "session_id": self.session_id,
+            "title": self.title,
+            "mode": self.mode,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ChatMessage(Base):
+    """Persistent chat messages belonging to a chat session."""
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(80), nullable=False, index=True)
+    role = Column(String(20), nullable=False)
+    content = Column(Text, nullable=False)
+    sources_json = Column(Text, nullable=True)
+    timestamp = Column(String(40), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        import json
+        sources = []
+        if self.sources_json:
+            try:
+                sources = json.loads(self.sources_json)
+            except Exception:
+                sources = []
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "role": self.role,
+            "type": "user" if self.role == "user" else "bot",
+            "text": self.content if self.role == "user" else None,
+            "reply": self.content if self.role != "user" else None,
+            "sources": sources,
+            "timestamp": self.timestamp,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 # Backwards compatibility aliases
 SAMPLE_PRODUCTS = PRODUCTS_DATA[:5]
 SAMPLE_MASTERS = CLIENTS_MASTER_DATA
@@ -1235,3 +1290,87 @@ def query_database_smart(prompt: str) -> Optional[str]:
     if response_parts:
         return "\n\n---\n\n".join(response_parts)
     return None
+
+
+# ============================================================================
+# Chat Persistence & Sync Layer
+# ============================================================================
+
+def save_chat_session(session_id: str, title: str, mode: str = "company", messages: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Save or update chat session and sync its message history."""
+    import json
+    session = db_engine.get_session()
+    try:
+        conv = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+        if not conv:
+            conv = ChatSession(session_id=session_id, title=title[:190], mode=mode)
+            session.add(conv)
+        else:
+            conv.title = title[:190]
+            conv.mode = mode
+            conv.updated_at = datetime.now(timezone.utc)
+        session.commit()
+
+        if messages:
+            session.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+            for m in messages:
+                role = m.get("role") or ("user" if m.get("type") == "user" else "assistant")
+                content = m.get("content") or m.get("text") or m.get("reply") or ""
+                sources = m.get("sources", [])
+                src_json = json.dumps(sources) if sources else None
+                ts = m.get("timestamp")
+                session.add(ChatMessage(
+                    session_id=session_id,
+                    role=role,
+                    content=content,
+                    sources_json=src_json,
+                    timestamp=ts
+                ))
+            session.commit()
+        return conv.to_dict()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to save chat session: {e}")
+        return {"session_id": session_id, "title": title, "mode": mode}
+    finally:
+        session.close()
+
+def get_chat_sessions(limit: int = 30) -> List[Dict[str, Any]]:
+    """Retrieve recent chat sessions from database."""
+    session = db_engine.get_session()
+    try:
+        sessions = session.query(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit).all()
+        result = []
+        for s in sessions:
+            item = s.to_dict()
+            last_msg = session.query(ChatMessage).filter(ChatMessage.session_id == s.session_id).order_by(ChatMessage.id.desc()).first()
+            item["last_message"] = last_msg.content[:80] if last_msg else ""
+            result.append(item)
+        return result
+    finally:
+        session.close()
+
+def get_chat_session_messages(session_id: str) -> List[Dict[str, Any]]:
+    """Retrieve all messages for a specific session."""
+    session = db_engine.get_session()
+    try:
+        msgs = session.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.id.asc()).all()
+        return [m.to_dict() for m in msgs]
+    finally:
+        session.close()
+
+def delete_chat_session(session_id: str) -> bool:
+    """Delete a chat session and its messages from database."""
+    session = db_engine.get_session()
+    try:
+        session.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+        session.query(ChatSession).filter(ChatSession.session_id == session_id).delete()
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to delete chat session: {e}")
+        return False
+    finally:
+        session.close()
+

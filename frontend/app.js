@@ -178,6 +178,17 @@ function loadSavedConversations() {
 function saveConversationsToStorage() {
   try {
     localStorage.setItem(STORAGE_KEY_CONVS, JSON.stringify(conversations));
+    // Asynchronously sync active conversation to server-side PostgreSQL
+    if (activeConvId) {
+      const active = conversations.find(c => c.id === activeConvId);
+      if (active) {
+        fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(active)
+        }).catch(() => {});
+      }
+    }
   } catch (e) {
     console.error('Failed to save conversations:', e);
   }
@@ -290,6 +301,7 @@ function deleteConversation(convId) {
   if (confirm('Delete this conversation from history?')) {
     conversations = conversations.filter(c => c.id !== convId);
     saveConversationsToStorage();
+    fetch(`/api/conversations/${convId}`, { method: 'DELETE' }).catch(() => {});
     if (activeConvId === convId) {
       startNewConversation();
     } else {
