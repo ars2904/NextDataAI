@@ -31,6 +31,257 @@ const btnNewChat = document.getElementById('btnNewChat');
 const sidebar = document.getElementById('sidebar');
 const sidebarOverlay = document.getElementById('sidebarOverlay');
 
+// ----------------------------------------------------
+// Phase 6: Option B (Hybrid / Guest Mode) Auth State & Controller
+// ----------------------------------------------------
+const STORAGE_KEY_AUTH_TOKEN = 'nexadata_auth_token';
+const STORAGE_KEY_AUTH_USER = 'nexadata_auth_user';
+
+let currentAuthToken = localStorage.getItem(STORAGE_KEY_AUTH_TOKEN) || null;
+let currentAuthUser = null;
+try {
+  const rawUser = localStorage.getItem(STORAGE_KEY_AUTH_USER);
+  currentAuthUser = rawUser ? JSON.parse(rawUser) : null;
+} catch (e) {
+  currentAuthUser = null;
+}
+
+function getAuthHeaders(extraHeaders = {}) {
+  const headers = { ...extraHeaders };
+  if (currentAuthToken) {
+    headers['Authorization'] = `Bearer ${currentAuthToken}`;
+  }
+  return headers;
+}
+
+function updateAuthUI() {
+  const btnOpenModal = document.getElementById('btnOpenAuthModal');
+  const userProfileMenu = document.getElementById('userProfileMenu');
+  const userAvatar = document.getElementById('userAvatar');
+  const userDisplayName = document.getElementById('userDisplayName');
+  const dropdownUserName = document.getElementById('dropdownUserName');
+  const dropdownUserEmail = document.getElementById('dropdownUserEmail');
+  const dropdownUserRole = document.getElementById('dropdownUserRole');
+
+  if (currentAuthUser && currentAuthToken) {
+    if (btnOpenModal) btnOpenModal.classList.add('hidden');
+    if (userProfileMenu) userProfileMenu.classList.remove('hidden');
+
+    const name = currentAuthUser.full_name || 'User';
+    const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U';
+    
+    if (userAvatar) userAvatar.textContent = initials;
+    if (userDisplayName) userDisplayName.textContent = name;
+    if (dropdownUserName) dropdownUserName.textContent = name;
+    if (dropdownUserEmail) dropdownUserEmail.textContent = currentAuthUser.email || '';
+    if (dropdownUserRole) {
+      dropdownUserRole.textContent = currentAuthUser.role === 'admin' ? 'Administrator' : 'Standard User';
+    }
+  } else {
+    if (btnOpenModal) btnOpenModal.classList.remove('hidden');
+    if (userProfileMenu) userProfileMenu.classList.add('hidden');
+  }
+}
+
+function openAuthModal(defaultTab = 'signin') {
+  const modal = document.getElementById('authModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  switchAuthTab(defaultTab);
+  clearAuthError();
+  const inputToFocus = defaultTab === 'signin' ? document.getElementById('loginEmail') : document.getElementById('regFullName');
+  if (inputToFocus) setTimeout(() => inputToFocus.focus(), 100);
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('authModal');
+  if (modal) modal.classList.add('hidden');
+  clearAuthError();
+}
+
+function handleAuthModalBackdropClick(event) {
+  if (event.target.id === 'authModal') {
+    closeAuthModal();
+  }
+}
+
+function switchAuthTab(tab) {
+  const tabSignIn = document.getElementById('tabSignIn');
+  const tabRegister = document.getElementById('tabRegister');
+  const signInForm = document.getElementById('signInForm');
+  const registerForm = document.getElementById('registerForm');
+
+  clearAuthError();
+  if (tab === 'signin') {
+    tabSignIn.classList.add('active');
+    tabRegister.classList.remove('active');
+    signInForm.classList.remove('hidden');
+    registerForm.classList.add('hidden');
+  } else {
+    tabRegister.classList.add('active');
+    tabSignIn.classList.remove('active');
+    registerForm.classList.remove('hidden');
+    signInForm.classList.add('hidden');
+  }
+}
+
+function setAuthError(msg) {
+  const errBox = document.getElementById('authErrorMsg');
+  if (errBox) {
+    errBox.textContent = msg;
+    errBox.classList.remove('hidden');
+  }
+}
+
+function clearAuthError() {
+  const errBox = document.getElementById('authErrorMsg');
+  if (errBox) {
+    errBox.textContent = '';
+    errBox.classList.add('hidden');
+  }
+}
+
+function toggleUserDropdown() {
+  const dropdown = document.getElementById('userDropdownMenu');
+  if (dropdown) {
+    dropdown.classList.toggle('hidden');
+  }
+}
+
+// Close user dropdown on click outside
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('userProfileMenu');
+  const dropdown = document.getElementById('userDropdownMenu');
+  if (menu && dropdown && !menu.contains(e.target)) {
+    dropdown.classList.add('hidden');
+  }
+});
+
+async function handleSignInSubmit(event) {
+  event.preventDefault();
+  clearAuthError();
+  const btn = document.getElementById('btnSubmitLogin');
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Sign in failed. Check your credentials.');
+    }
+
+    currentAuthToken = data.access_token;
+    currentAuthUser = data.user;
+    localStorage.setItem(STORAGE_KEY_AUTH_TOKEN, currentAuthToken);
+    localStorage.setItem(STORAGE_KEY_AUTH_USER, JSON.stringify(currentAuthUser));
+
+    updateAuthUI();
+    closeAuthModal();
+    await syncServerConversations();
+  } catch (err) {
+    setAuthError(err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+  }
+}
+
+async function handleRegisterSubmit(event) {
+  event.preventDefault();
+  clearAuthError();
+  const btn = document.getElementById('btnSubmitRegister');
+  const fullName = document.getElementById('regFullName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+
+  if (password.length < 6) {
+    setAuthError('Password must be at least 6 characters.');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, full_name: fullName })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Registration failed.');
+    }
+
+    currentAuthToken = data.access_token;
+    currentAuthUser = data.user;
+    localStorage.setItem(STORAGE_KEY_AUTH_TOKEN, currentAuthToken);
+    localStorage.setItem(STORAGE_KEY_AUTH_USER, JSON.stringify(currentAuthUser));
+
+    updateAuthUI();
+    closeAuthModal();
+    await syncServerConversations();
+  } catch (err) {
+    setAuthError(err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Free Account'; }
+  }
+}
+
+function quickDemoLogin() {
+  document.getElementById('loginEmail').value = 'demo@nexadata.ai';
+  document.getElementById('loginPassword').value = 'NexaDemo2026!';
+  const form = document.getElementById('signInForm');
+  if (form) {
+    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  }
+}
+
+async function logoutUser() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' })
+    }).catch(() => {});
+  } finally {
+    currentAuthToken = null;
+    currentAuthUser = null;
+    localStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
+    localStorage.removeItem(STORAGE_KEY_AUTH_USER);
+    updateAuthUI();
+    const dropdown = document.getElementById('userDropdownMenu');
+    if (dropdown) dropdown.classList.add('hidden');
+    loadSavedConversations();
+    renderHistoryList();
+  }
+}
+
+async function syncServerConversations() {
+  if (!currentAuthToken) return;
+  try {
+    const res = await fetch('/api/conversations', {
+      headers: getAuthHeaders()
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.conversations && data.conversations.length > 0) {
+        conversations = data.conversations;
+        localStorage.setItem(STORAGE_KEY_CONVS, JSON.stringify(conversations));
+        renderHistoryList();
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to sync server conversations:', e);
+  }
+}
+
+
+
 // Helper: Escape HTML
 function escapeHtml(text) {
   if (!text) return '';
@@ -184,7 +435,7 @@ function saveConversationsToStorage() {
       if (active) {
         fetch('/api/conversations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(active)
         }).catch(() => {});
       }
@@ -301,7 +552,10 @@ function deleteConversation(convId) {
   if (confirm('Delete this conversation from history?')) {
     conversations = conversations.filter(c => c.id !== convId);
     saveConversationsToStorage();
-    fetch(`/api/conversations/${convId}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`/api/conversations/${convId}`, { 
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    }).catch(() => {});
     if (activeConvId === convId) {
       startNewConversation();
     } else {
@@ -844,6 +1098,7 @@ async function submitMessage() {
 
       const res = await fetch('/api/chat-upload', {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData
       });
 
@@ -886,13 +1141,14 @@ async function submitMessage() {
       // Real-time progressive token streaming via Server-Sent Events (SSE)
       const res = await fetch('/api/chat-stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           message: query,
           mode: modeForThisQuery,
           conversation_history: recentHistory
         })
       });
+
 
       typingElement.remove();
 
@@ -1393,8 +1649,10 @@ btnNewChat.addEventListener('click', startNewConversation);
 document.addEventListener('DOMContentLoaded', () => {
   updateModePillsUI();
   initTheme();
+  updateAuthUI();
   loadSavedConversations();
   renderHistoryList();
+  syncServerConversations();
 
   // If active conversation was saved, load it; else show fresh thread
   if (activeConvId) {
@@ -1410,3 +1668,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
   chatInput.focus();
 });
+

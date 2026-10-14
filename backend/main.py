@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 import json
 import time
 from collections import defaultdict
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -13,7 +13,14 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from backend.models import ChatRequest, ChatResponse, BrandInfoResponse, PromptChip, ExportPdfRequest, ConversationMessage
+from backend.models import (
+    ChatRequest, ChatResponse, BrandInfoResponse, PromptChip, ExportPdfRequest,
+    ConversationMessage, RegisterRequest, LoginRequest, AuthResponse, UserProfile
+)
+from backend.security import (
+    hash_password, verify_password, create_access_token, decode_access_token,
+    get_current_user_optional, get_current_user_required
+)
 from backend.orchestrator import orchestrator
 from backend.pdf_exporter import generate_conversation_pdf
 from backend.file_handler import process_uploaded_file, validate_file, MAX_FILE_SIZE_BYTES
@@ -34,7 +41,11 @@ from database.postgres import (
     save_chat_session,
     get_chat_sessions,
     get_chat_session_messages,
-    delete_chat_session
+    delete_chat_session,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+    update_user_last_login
 )
 from rag.engine import knowledge_base
 
@@ -53,7 +64,10 @@ RATE_LIMIT_RULES = {
     "/api/chat-stream": {"window": 60, "max_requests": 60},
     "/api/chat-upload": {"window": 60, "max_requests": 25},
     "/api/export-pdf": {"window": 60, "max_requests": 15},
+    "/api/auth/login": {"window": 60, "max_requests": 30},
+    "/api/auth/register": {"window": 60, "max_requests": 15},
 }
+
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -322,23 +336,137 @@ def export_pdf_endpoint(payload: ExportPdfRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate conversation PDF: {str(e)}")
 
 # ============================================================================
-# Phase 4: PostgreSQL Server-Side Chat Persistence & Sync Endpoints
+# Phase 6: Option B (Hybrid / Guest Mode) Authentication Endpoints
+# ============================================================================
+
+@app.post("/api/auth/register", response_model=AuthResponse)
+def register(payload: RegisterRequest):
+    """
+    Register a new user account. Returns JWT access token and user profile.
+    """
+    clean_email = payload.email.strip().lower()
+    existing = get_user_by_email(clean_email)
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+    
+    hashed = hash_password(payload.password)
+    user = create_user(
+        email=clean_email,
+        password_hash=hashed,
+        full_name=payload.full_name.strip(),
+        role="user"
+    )
+    
+    token = create_access_token({
+        "sub": user["user_id"],
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "role": user["role"],
+        "full_name": user["full_name"]
+    })
+    
+    return AuthResponse(
+        access_token=token,
+        token_type="bearer",
+        user=UserProfile(
+            user_id=user["user_id"],
+            email=user["email"],
+            full_name=user["full_name"],
+            role=user["role"],
+            is_active=user.get("is_active", True),
+            created_at=user.get("created_at"),
+            last_login_at=user.get("last_login_at")
+        )
+    )
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+def login(payload: LoginRequest):
+    """
+    Authenticate user credentials. Returns JWT access token and user profile.
+    """
+    clean_email = payload.email.strip().lower()
+    user = get_user_by_email(clean_email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    
+    if not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    
+    update_user_last_login(user["user_id"])
+    
+    token = create_access_token({
+        "sub": user["user_id"],
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "role": user["role"],
+        "full_name": user["full_name"]
+    })
+    
+    return AuthResponse(
+        access_token=token,
+        token_type="bearer",
+        user=UserProfile(
+            user_id=user["user_id"],
+            email=user["email"],
+            full_name=user["full_name"],
+            role=user["role"],
+            is_active=user.get("is_active", True),
+            created_at=user.get("created_at"),
+            last_login_at=user.get("last_login_at")
+        )
+    )
+
+@app.get("/api/auth/me", response_model=UserProfile)
+def get_current_user_profile(current_user: Dict[str, Any] = Depends(get_current_user_required)):
+    """
+    Get profile information of currently logged in user.
+    """
+    user_id = current_user.get("user_id") or current_user.get("sub")
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found.")
+    return UserProfile(
+        user_id=user["user_id"],
+        email=user["email"],
+        full_name=user["full_name"],
+        role=user["role"],
+        is_active=user.get("is_active", True),
+        created_at=user.get("created_at"),
+        last_login_at=user.get("last_login_at")
+    )
+
+@app.post("/api/auth/logout")
+def logout():
+    """
+    Stateless JWT logout endpoint for client-side token discard.
+    """
+    return {"status": "logged_out", "message": "Session invalidated successfully."}
+
+
+# ============================================================================
+# Phase 4 & Phase 6: Multi-Tenant Server-Side Chat Persistence & Sync Endpoints
 # ============================================================================
 @app.get("/api/conversations")
-def list_conversations():
-    """List recent persistent chat sessions."""
-    return {"conversations": get_chat_sessions(limit=50)}
+def list_conversations(current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)):
+    """
+    List persistent chat sessions.
+    - If authenticated: returns sessions belonging to current_user.
+    - If guest: returns recent unassigned or public sessions.
+    """
+    user_id = (current_user.get("user_id") or current_user.get("sub")) if current_user else None
+    return {"conversations": get_chat_sessions(limit=50, user_id=user_id)}
 
 @app.post("/api/conversations")
-def save_conversation(payload: Dict[str, Any]):
-    """Sync/save conversation session and messages."""
+def save_conversation(payload: Dict[str, Any], current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)):
+    """Sync/save conversation session and messages with user isolation."""
     session_id = payload.get("id") or payload.get("session_id")
     if not session_id:
         raise HTTPException(status_code=400, detail="Missing conversation session_id")
     title = payload.get("title", "New Conversation")
     mode = payload.get("mode", "company")
     messages = payload.get("messages", [])
-    res = save_chat_session(session_id=session_id, title=title, mode=mode, messages=messages)
+    user_id = (current_user.get("user_id") or current_user.get("sub")) if current_user else None
+    res = save_chat_session(session_id=session_id, title=title, mode=mode, messages=messages, user_id=user_id)
     return {"status": "saved", "conversation": res}
 
 @app.get("/api/conversations/{session_id}")
@@ -348,10 +476,12 @@ def get_conversation(session_id: str):
     return {"session_id": session_id, "messages": msgs}
 
 @app.delete("/api/conversations/{session_id}")
-def delete_conversation_endpoint(session_id: str):
+def delete_conversation_endpoint(session_id: str, current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)):
     """Delete a conversation session and all its messages."""
-    success = delete_chat_session(session_id)
+    user_id = (current_user.get("user_id") or current_user.get("sub")) if current_user else None
+    success = delete_chat_session(session_id, user_id=user_id)
     return {"status": "deleted" if success else "not_found", "session_id": session_id}
+
 
 # ============================================================================
 # 🗄️ PostgreSQL Database Demonstration & Query Endpoints

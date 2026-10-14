@@ -99,6 +99,39 @@
           <span id="themeToggleIcon">🌙</span>
           <span class="theme-toggle-label">Dark</span>
         </button>
+
+        <!-- User Profile / Auth State Pill -->
+        <div class="auth-nav-container" id="authNavContainer">
+          <!-- Guest State: Sign In Button -->
+          <button class="btn-auth-signin" id="btnOpenAuthModal" onclick="openAuthModal()" title="Sign In or Create Account">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span class="auth-btn-label">Sign In</span>
+          </button>
+
+          <!-- Authenticated State: User Profile Pill & Dropdown -->
+          <div class="user-profile-menu hidden" id="userProfileMenu">
+            <button class="user-profile-trigger" id="userProfileTrigger" onclick="toggleUserDropdown()" aria-label="User menu">
+              <div class="user-avatar" id="userAvatar">DA</div>
+              <span class="user-display-name" id="userDisplayName">Demo Analyst</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="user-dropdown-menu hidden" id="userDropdownMenu">
+              <div class="user-dropdown-header">
+                <div class="user-dropdown-name" id="dropdownUserName">Demo Analyst</div>
+                <div class="user-dropdown-email" id="dropdownUserEmail">demo@nexadata.ai</div>
+                <span class="user-role-badge" id="dropdownUserRole">Standard User</span>
+              </div>
+              <div class="user-dropdown-divider"></div>
+              <button class="user-dropdown-item" onclick="logoutUser()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -302,6 +335,69 @@
 
   </main>
 
-  <script src="/static/app.js?v=3.6"></script>
+  <!-- Authentication Modal (Option B Hybrid Mode) -->
+  <div class="modal-overlay hidden" id="authModal" onclick="handleAuthModalBackdropClick(event)">
+    <div class="auth-modal-card" onclick="event.stopPropagation()">
+      <div class="auth-modal-header">
+        <div class="auth-header-brand">
+          <img src="/static/logo_dark.png" id="authModalLogo" alt="NexaData AI" class="auth-modal-logo">
+          <span class="auth-header-title">NexaData Portal</span>
+        </div>
+        <button class="auth-modal-close" onclick="closeAuthModal()" aria-label="Close modal">✕</button>
+      </div>
+
+      <!-- Mode Tabs (Sign In / Register) -->
+      <div class="auth-tabs">
+        <button class="auth-tab-btn active" id="tabSignIn" onclick="switchAuthTab('signin')">Sign In</button>
+        <button class="auth-tab-btn" id="tabRegister" onclick="switchAuthTab('register')">Create Account</button>
+      </div>
+
+      <!-- Error Message Banner -->
+      <div class="auth-error-banner hidden" id="authErrorMsg"></div>
+
+      <!-- Sign In Form -->
+      <form id="signInForm" onsubmit="handleSignInSubmit(event)">
+        <div class="auth-field">
+          <label for="loginEmail">Email Address</label>
+          <input type="email" id="loginEmail" required placeholder="name@company.com" autocomplete="username">
+        </div>
+        <div class="auth-field">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-auth-submit" id="btnSubmitLogin">
+          <span>Sign In</span>
+        </button>
+        <button type="button" class="btn-quick-demo" onclick="quickDemoLogin()">
+          ⚡ Quick Demo Login (Instant Access)
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="registerForm" class="hidden" onsubmit="handleRegisterSubmit(event)">
+        <div class="auth-field">
+          <label for="regFullName">Full Name</label>
+          <input type="text" id="regFullName" required placeholder="Alex Mercer" autocomplete="name">
+        </div>
+        <div class="auth-field">
+          <label for="regEmail">Email Address</label>
+          <input type="email" id="regEmail" required placeholder="alex@company.com" autocomplete="username">
+        </div>
+        <div class="auth-field">
+          <label for="regPassword">Password (minimum 6 characters)</label>
+          <input type="password" id="regPassword" required minlength="6" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn-auth-submit" id="btnSubmitRegister">
+          <span>Create Free Account</span>
+        </button>
+      </form>
+
+      <div class="auth-modal-footer">
+        <p class="auth-guest-notice">💡 <strong>Guest Mode active</strong>: Anyone can ask questions freely. Signing in unlocks persistent cross-device cloud sync and personal chat history.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=4.0"></script>
 </body>
 </html>

@@ -43,3 +43,27 @@ class ExportPdfRequest(BaseModel):
     mode: Optional[str] = "company"
     messages: List[Dict[str, Any]] = []
     export_time: Optional[str] = None
+
+class RegisterRequest(BaseModel):
+    email: str = Field(..., description="User's email address")
+    password: str = Field(..., min_length=6, description="Plaintext password (min 6 chars)")
+    full_name: str = Field(..., min_length=1, description="User's full name")
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., description="User's email address")
+    password: str = Field(..., description="Plaintext password")
+
+class UserProfile(BaseModel):
+    user_id: str
+    email: str
+    full_name: str
+    role: str = "user"
+    is_active: bool = True
+    created_at: Optional[str] = None
+    last_login_at: Optional[str] = None
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserProfile
+

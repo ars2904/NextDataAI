@@ -539,12 +539,40 @@ class FAQ(Base):
         }
 
 
+class User(Base):
+    """User accounts for multi-tenant isolation and session management."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(80), unique=True, nullable=False, index=True)
+    email = Column(String(120), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(120), nullable=False)
+    role = Column(String(40), default="user")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_login_at = Column(DateTime, nullable=True)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "email": self.email,
+            "full_name": self.full_name,
+            "role": self.role,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
+        }
+
+
 class ChatSession(Base):
     """Server-side persistent chat sessions for cross-device sync."""
     __tablename__ = "chat_sessions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(80), unique=True, nullable=False, index=True)
+    user_id = Column(String(80), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     mode = Column(String(40), default="company")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -554,6 +582,7 @@ class ChatSession(Base):
         return {
             "id": self.session_id,
             "session_id": self.session_id,
+            "user_id": self.user_id,
             "title": self.title,
             "mode": self.mode,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -674,8 +703,18 @@ class DatabaseEngine:
         # Create schema tables
         Base.metadata.create_all(bind=self.engine)
 
+        # Migration: Ensure user_id column exists on chat_sessions for backward compatibility
+        try:
+            with self.engine.connect() as conn:
+                from sqlalchemy import text
+                conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(80)"))
+                conn.commit()
+        except Exception:
+            pass  # Column already exists or table freshly created
+
         # Pre-seed records if empty
         self.seed_sample_data()
+
 
     def get_session(self):
         """Provide a scoped session."""
@@ -805,6 +844,29 @@ class DatabaseEngine:
                     session.add(FAQ(**faq))
                 session.commit()
                 logger.info("Seeded 15 Corporate FAQs.")
+
+            # 16. Default User Accounts (Option B Hybrid Mode Demo & Admin)
+            if session.query(User).count() == 0:
+                from backend.security import hash_password
+                admin_user = User(
+                    user_id="user_admin_001",
+                    email="admin@nexadata.ai",
+                    password_hash=hash_password("NexaData2026!"),
+                    full_name="System Administrator",
+                    role="admin",
+                    is_active=True
+                )
+                demo_user = User(
+                    user_id="user_demo_002",
+                    email="demo@nexadata.ai",
+                    password_hash=hash_password("NexaDemo2026!"),
+                    full_name="Demo Analyst",
+                    role="user",
+                    is_active=True
+                )
+                session.add_all([admin_user, demo_user])
+                session.commit()
+                logger.info("Seeded default Admin and Demo user accounts.")
 
         except Exception as e:
             session.rollback()
@@ -1296,18 +1358,20 @@ def query_database_smart(prompt: str) -> Optional[str]:
 # Chat Persistence & Sync Layer
 # ============================================================================
 
-def save_chat_session(session_id: str, title: str, mode: str = "company", messages: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def save_chat_session(session_id: str, title: str, mode: str = "company", messages: Optional[List[Dict[str, Any]]] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Save or update chat session and sync its message history."""
     import json
     session = db_engine.get_session()
     try:
         conv = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
         if not conv:
-            conv = ChatSession(session_id=session_id, title=title[:190], mode=mode)
+            conv = ChatSession(session_id=session_id, user_id=user_id, title=title[:190], mode=mode)
             session.add(conv)
         else:
             conv.title = title[:190]
             conv.mode = mode
+            if user_id and not conv.user_id:
+                conv.user_id = user_id
             conv.updated_at = datetime.now(timezone.utc)
         session.commit()
 
@@ -1331,15 +1395,18 @@ def save_chat_session(session_id: str, title: str, mode: str = "company", messag
     except Exception as e:
         session.rollback()
         logger.error(f"Failed to save chat session: {e}")
-        return {"session_id": session_id, "title": title, "mode": mode}
+        return {"session_id": session_id, "title": title, "mode": mode, "user_id": user_id}
     finally:
         session.close()
 
-def get_chat_sessions(limit: int = 30) -> List[Dict[str, Any]]:
-    """Retrieve recent chat sessions from database."""
+def get_chat_sessions(limit: int = 30, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve recent chat sessions from database, optionally filtered by user_id."""
     session = db_engine.get_session()
     try:
-        sessions = session.query(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit).all()
+        query = session.query(ChatSession)
+        if user_id:
+            query = query.filter(ChatSession.user_id == user_id)
+        sessions = query.order_by(ChatSession.updated_at.desc()).limit(limit).all()
         result = []
         for s in sessions:
             item = s.to_dict()
@@ -1359,12 +1426,17 @@ def get_chat_session_messages(session_id: str) -> List[Dict[str, Any]]:
     finally:
         session.close()
 
-def delete_chat_session(session_id: str) -> bool:
-    """Delete a chat session and its messages from database."""
+def delete_chat_session(session_id: str, user_id: Optional[str] = None) -> bool:
+    """Delete a chat session and its messages from database, optionally verifying user_id."""
     session = db_engine.get_session()
     try:
+        conv = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
+        if not conv:
+            return False
+        if user_id and conv.user_id and conv.user_id != user_id:
+            return False
         session.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
-        session.query(ChatSession).filter(ChatSession.session_id == session_id).delete()
+        session.delete(conv)
         session.commit()
         return True
     except Exception as e:
@@ -1373,4 +1445,66 @@ def delete_chat_session(session_id: str) -> bool:
         return False
     finally:
         session.close()
+
+
+# ============================================================================
+# User Account Helpers
+# ============================================================================
+
+def create_user(email: str, password_hash: str, full_name: str, role: str = "user", user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Create a new user account in database."""
+    import uuid
+    session = db_engine.get_session()
+    try:
+        uid = user_id or f"usr_{uuid.uuid4().hex[:12]}"
+        user = User(
+            user_id=uid,
+            email=email.strip().lower(),
+            password_hash=password_hash,
+            full_name=full_name.strip(),
+            role=role,
+            is_active=True
+        )
+        session.add(user)
+        session.commit()
+        return user.to_dict()
+    finally:
+        session.close()
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Retrieve user by normalized email address."""
+    session = db_engine.get_session()
+    try:
+        user = session.query(User).filter(User.email == email.strip().lower()).first()
+        if not user:
+            return None
+        res = user.to_dict()
+        res["password_hash"] = user.password_hash
+        return res
+    finally:
+        session.close()
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve user by user_id."""
+    session = db_engine.get_session()
+    try:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        return user.to_dict() if user else None
+    finally:
+        session.close()
+
+def update_user_last_login(user_id: str):
+    """Update last_login_at timestamp for a user."""
+    session = db_engine.get_session()
+    try:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if user:
+            user.last_login_at = datetime.now(timezone.utc)
+            session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update user last login: {e}")
+    finally:
+        session.close()
+
 
