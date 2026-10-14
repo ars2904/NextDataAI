@@ -822,7 +822,6 @@ async function submitMessage() {
         content: m.type === 'user' ? (m.text || '') : (m.reply || '')
       }));
 
-    let res;
     if (attachmentToSend && attachmentToSend.file) {
       // Multipart upload with file
       const formData = new FormData();
@@ -831,13 +830,49 @@ async function submitMessage() {
       formData.append('conversation_history', JSON.stringify(recentHistory));
       formData.append('file', attachmentToSend.file);
 
-      res = await fetch('/api/chat-upload', {
+      const res = await fetch('/api/chat-upload', {
         method: 'POST',
         body: formData
       });
+
+      typingElement.remove();
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const replyTime = data.timestamp || getTimeString();
+
+      const botMsg = {
+        type: 'bot',
+        reply: data.reply,
+        timestamp: replyTime,
+        sources: data.sources || [],
+        mode: modeForThisQuery,
+        attachment_info: data.attachment_info || null
+      };
+
+      // Save response to thread
+      threads[modeForThisQuery].push(botMsg);
+
+      // Sync to active conversation in storage
+      if (currentConv) {
+        currentConv.messages.push(botMsg);
+        currentConv.updatedAt = Date.now();
+        saveConversationsToStorage();
+        renderHistoryList();
+      }
+
+      // Render if still on the same tab
+      if (currentMode === modeForThisQuery) {
+        renderBotBubble(data.reply, replyTime, data.sources, modeForThisQuery);
+      }
+
     } else {
-      // Standard JSON chat request
-      res = await fetch('/api/chat', {
+      // Real-time progressive token streaming via Server-Sent Events (SSE)
+      const res = await fetch('/api/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -846,41 +881,80 @@ async function submitMessage() {
           conversation_history: recentHistory
         })
       });
-    }
 
-    typingElement.remove();
+      typingElement.remove();
 
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(errJson.detail || `HTTP ${res.status}`);
-    }
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `HTTP ${res.status}`);
+      }
 
-    const data = await res.json();
-    const replyTime = data.timestamp || getTimeString();
+      // Initialize streaming bubble
+      const streamObj = createStreamingBotBubble(modeForThisQuery);
+      let streamedText = '';
+      let streamSources = [];
+      let finalTimestamp = getTimeString();
 
-    const botMsg = {
-      type: 'bot',
-      reply: data.reply,
-      timestamp: replyTime,
-      sources: data.sources || [],
-      mode: modeForThisQuery,
-      attachment_info: data.attachment_info || null
-    };
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
 
-    // Save response to thread
-    threads[modeForThisQuery].push(botMsg);
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
 
-    // Sync to active conversation in storage
-    if (currentConv) {
-      currentConv.messages.push(botMsg);
-      currentConv.updatedAt = Date.now();
-      saveConversationsToStorage();
-      renderHistoryList();
-    }
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop();
 
-    // Only render if user is still on the same tab
-    if (currentMode === modeForThisQuery) {
-      renderBotBubble(data.reply, replyTime, data.sources, modeForThisQuery);
+        for (const evt of events) {
+          const trimmed = evt.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const jsonStr = trimmed.slice(5).trim();
+          if (!jsonStr) continue;
+          try {
+            const data = JSON.parse(jsonStr);
+            if (data.token) {
+              streamedText += data.token;
+              if (typeof marked !== 'undefined') {
+                streamObj.textContainer.innerHTML = marked.parse(streamedText);
+              } else {
+                streamObj.textContainer.textContent = streamedText;
+              }
+              chatArea.scrollTop = chatArea.scrollHeight;
+            }
+            if (data.done) {
+              if (data.sources) streamSources = data.sources;
+              if (data.timestamp) finalTimestamp = data.timestamp;
+              if (data.reply && !streamedText) streamedText = data.reply;
+            }
+          } catch (pe) {
+            console.warn('SSE chunk parsing error:', pe);
+          }
+        }
+      }
+
+      finalizeStreamingBotBubble(streamObj, streamedText, finalTimestamp, streamSources, modeForThisQuery);
+
+      const botMsg = {
+        type: 'bot',
+        reply: streamedText,
+        timestamp: finalTimestamp,
+        sources: streamSources,
+        mode: modeForThisQuery,
+        attachment_info: null
+      };
+
+      // Save response to thread
+      threads[modeForThisQuery].push(botMsg);
+
+      // Sync to active conversation in storage
+      if (currentConv) {
+        currentConv.messages.push(botMsg);
+        currentConv.updatedAt = Date.now();
+        saveConversationsToStorage();
+        renderHistoryList();
+      }
     }
 
   } catch (err) {
@@ -962,6 +1036,107 @@ function renderUserBubble(text, timestamp, attachment = null) {
   row.appendChild(body);
 
   chatArea.appendChild(row);
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function createStreamingBotBubble(mode) {
+  const row = document.createElement('div');
+  row.className = 'chat-row bot';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'chat-avatar bot';
+  avatar.innerHTML = `<img src="/static/icon.png" alt="NexaData" style="width: 22px; height: 22px; object-fit: contain;">`;
+
+  const body = document.createElement('div');
+  body.className = 'chat-body';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+
+  const textContainer = document.createElement('div');
+  textContainer.className = 'streaming-content';
+  bubble.appendChild(textContainer);
+
+  const time = document.createElement('div');
+  time.className = 'chat-time';
+  time.textContent = getTimeString();
+
+  body.appendChild(bubble);
+  body.appendChild(time);
+  row.appendChild(avatar);
+  row.appendChild(body);
+
+  chatArea.appendChild(row);
+  chatArea.scrollTop = chatArea.scrollHeight;
+
+  return { row, body, bubble, textContainer, timeEl: time };
+}
+
+function finalizeStreamingBotBubble(streamObj, replyMarkdown, timestamp, sources, mode) {
+  const { bubble, body, textContainer, timeEl } = streamObj;
+
+  // Render markdown safely
+  if (typeof marked !== 'undefined') {
+    textContainer.innerHTML = marked.parse(replyMarkdown);
+  } else {
+    textContainer.textContent = replyMarkdown;
+  }
+
+  // Source card for company mode
+  if (mode === 'company') {
+    const sourceCard = document.createElement('div');
+    sourceCard.className = 'source-clean-card';
+    
+    const docName = (sources && sources.length > 0) ? sources[0].document : 'NexaData_Company_Overview_and_Services.pdf';
+    const pageNum = (sources && sources.length > 0) ? `Page ${sources[0].page}` : 'Official Documents';
+
+    sourceCard.innerHTML = `
+      <div class="source-clean-left">
+        <div class="source-file-icon">📄</div>
+        <div class="source-clean-text">
+          <h4>Source</h4>
+          <p>Based on official NexaData documents (${pageNum})</p>
+        </div>
+      </div>
+      <button class="source-view-btn" onclick="toggleDetails(this)">View sources ›</button>
+    `;
+
+    const detailsBox = document.createElement('div');
+    detailsBox.style.display = 'none';
+    detailsBox.style.marginTop = '8px';
+    detailsBox.style.padding = '10px 12px';
+    detailsBox.style.background = 'rgba(0,0,0,0.2)';
+    detailsBox.style.borderRadius = '8px';
+    detailsBox.style.fontSize = '12px';
+    detailsBox.style.color = '#94A3B8';
+    detailsBox.innerHTML = `<b>Document:</b> <code>${docName}</code><br/><b>Verified Status:</b> Pre-indexed NexaData Knowledge Base`;
+    
+    sourceCard.appendChild(detailsBox);
+    bubble.appendChild(sourceCard);
+  }
+
+  // General Mode disclaimer
+  if (mode === 'general') {
+    const disclaimer = document.createElement('div');
+    disclaimer.className = 'general-disclaimer-box';
+    disclaimer.innerHTML = `
+      <span class="disclaimer-icon">ℹ️</span>
+      <div>This is a general information answer, not specific to NexaData's documents. For NexaData's official solutions, please use <b>Company Questions mode</b>.</div>
+    `;
+    bubble.appendChild(disclaimer);
+  }
+
+  // Feedback Action Buttons
+  const actions = document.createElement('div');
+  actions.className = 'bubble-actions';
+  actions.innerHTML = `
+    <button class="bubble-act-btn" onclick="copyReply(this)" title="Copy answer">📋</button>
+    <button class="bubble-act-btn" onclick="feedback(this, 'like')" title="Helpful">👍</button>
+    <button class="bubble-act-btn" onclick="feedback(this, 'dislike')" title="Not helpful">👎</button>
+  `;
+
+  timeEl.textContent = timestamp || getTimeString();
+  body.insertBefore(actions, timeEl);
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 

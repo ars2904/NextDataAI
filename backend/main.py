@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -111,6 +111,26 @@ def chat_endpoint(request: ChatRequest):
             conversation_history=request.conversation_history
         )
         return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat-stream")
+def chat_stream_endpoint(request: ChatRequest):
+    """
+    Real-time Token Streaming endpoint using Server-Sent Events (SSE).
+    Streams LLM tokens progressively to eliminate the blank delay.
+    Yields data: {"token": "..."} chunks and finishes with data: {"done": true, ...}.
+    """
+    try:
+        return StreamingResponse(
+            orchestrator.stream_message(
+                message=request.message.strip(),
+                mode=request.mode,
+                attachment=request.attachment,
+                conversation_history=request.conversation_history
+            ),
+            media_type="text/event-stream"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

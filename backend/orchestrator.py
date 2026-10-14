@@ -1,6 +1,7 @@
 """Chat Orchestrator for Dual-Mode Conversation."""
 import os
 import re
+import json
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
@@ -638,6 +639,163 @@ class ChatOrchestrator:
             return self.handle_company_question(message, attachment=attachment, conversation_history=conversation_history)
         else:
             return self.handle_general_question(message, attachment=attachment, conversation_history=conversation_history)
+
+    def stream_message(
+        self,
+        message: str,
+        mode: str = "company",
+        attachment: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Any]] = None
+    ):
+        """
+        Progressive token streaming generator using Server-Sent Events (SSE).
+        Yields `data: {"token": "..."}\n\n` for progressive typewriter rendering,
+        and terminates with `data: {"done": true, "reply": "...", "sources": [...], ...}\n\n`.
+        """
+        try:
+            # Check for live OpenAI client and no attachments
+            if self.client and not attachment:
+                effective_query = self._expand_query_with_history(message, conversation_history)
+
+                # 1. Company Mode
+                if mode == "company":
+                    # Check for direct database or temporal matches first
+                    db_content = query_database_smart(message)
+                    if not db_content and effective_query != message:
+                        db_content = query_database_smart(effective_query)
+                    if not db_content:
+                        sql_reply = answer_business_data_query(effective_query, client=self.client)
+                        if not sql_reply and effective_query != message:
+                            sql_reply = answer_business_data_query(message, client=self.client)
+                        if sql_reply:
+                            db_content = sql_reply
+
+                    if db_content:
+                        words = re.findall(r'\S+|\s+', db_content)
+                        for w in words:
+                            yield f"data: {json.dumps({'token': w})}\n\n"
+                        sources = [{"document": "PostgreSQL Enterprise Database (Live Records)", "page": 1, "score": 0.99, "snippet": "Live relational query executed on NexaData master schema."}]
+                        yield f"data: {json.dumps({'done': True, 'mode': 'company', 'reply': db_content, 'sources': sources, 'timestamp': self._get_timestamp()})}\n\n"
+                        return
+
+                    temporal_reply = self._handle_dynamic_temporal_or_capability(message)
+                    if temporal_reply and any(k in message.lower() for k in ["date", "year", "cutoff", "real-time", "real time"]):
+                        reply = f"{temporal_reply}\n\n*(For general open-ended inquiries, you can also use the General Questions tab).* "
+                        words = re.findall(r'\S+|\s+', reply)
+                        for w in words:
+                            yield f"data: {json.dumps({'token': w})}\n\n"
+                        yield f"data: {json.dumps({'done': True, 'mode': 'company', 'reply': reply, 'sources': [], 'timestamp': self._get_timestamp()})}\n\n"
+                        return
+
+                    context_chunks = knowledge_base.retrieve_context(effective_query, top_k=2) if effective_query else []
+                    if not context_chunks and message and effective_query != message:
+                        context_chunks = knowledge_base.retrieve_context(message, top_k=2)
+
+                    if not context_chunks:
+                        reply = "I could not find information about that in NexaData's official company documents. Please switch to the **General Questions** tab for open-ended questions."
+                        words = re.findall(r'\S+|\s+', reply)
+                        for w in words:
+                            yield f"data: {json.dumps({'token': w})}\n\n"
+                        yield f"data: {json.dumps({'done': True, 'mode': 'company', 'reply': reply, 'sources': [], 'timestamp': self._get_timestamp()})}\n\n"
+                        return
+
+                    # Live LLM Streaming
+                    sys_prompt, user_prompt = knowledge_base.build_grounded_prompt(message, context_chunks)
+                    history_msgs = self._format_history_messages(conversation_history)
+                    messages = [{"role": "system", "content": sys_prompt}] + history_msgs + [{"role": "user", "content": user_prompt}]
+                    stream = self.client.chat.completions.create(
+                        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                        messages=messages,
+                        temperature=0.1,
+                        max_tokens=500,
+                        stream=True
+                    )
+                    full_reply = []
+                    for chunk in stream:
+                        delta = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else ""
+                        if delta:
+                            full_reply.append(delta)
+                            yield f"data: {json.dumps({'token': delta})}\n\n"
+
+                    complete_reply = "".join(full_reply).strip()
+                    sources = [
+                        {
+                            "document": c["source"],
+                            "page": c["page"],
+                            "score": c["similarity_score"],
+                            "snippet": c["text"][:180] + "..."
+                        }
+                        for c in context_chunks
+                    ]
+                    yield f"data: {json.dumps({'done': True, 'mode': 'company', 'reply': complete_reply, 'sources': sources, 'timestamp': self._get_timestamp()})}\n\n"
+                    return
+
+                # 2. General Mode
+                else:
+                    db_content = query_database_smart(message)
+                    if not db_content and effective_query != message:
+                        db_content = query_database_smart(effective_query)
+                    sql_content = None
+                    if not db_content:
+                        sql_content = answer_business_data_query(effective_query, client=self.client)
+                        if not sql_content and effective_query != message:
+                            sql_content = answer_business_data_query(message, client=self.client)
+                        if sql_content:
+                            db_content = sql_content
+
+                    combined_check = (message + " " + effective_query).lower()
+                    if db_content and (sql_content or any(k in combined_check for k in ["database", "transaction", "client master", "product", "customer", "order", "inventory", "department"])):
+                        words = re.findall(r'\S+|\s+', db_content)
+                        for w in words:
+                            yield f"data: {json.dumps({'token': w})}\n\n"
+                        yield f"data: {json.dumps({'done': True, 'mode': 'general', 'reply': db_content, 'sources': [], 'timestamp': self._get_timestamp()})}\n\n"
+                        return
+
+                    temporal_reply = self._handle_dynamic_temporal_or_capability(message)
+                    if temporal_reply:
+                        words = re.findall(r'\S+|\s+', temporal_reply)
+                        for w in words:
+                            yield f"data: {json.dumps({'token': w})}\n\n"
+                        yield f"data: {json.dumps({'done': True, 'mode': 'general', 'reply': temporal_reply, 'sources': [], 'timestamp': self._get_timestamp()})}\n\n"
+                        return
+
+                    sys_prompt = self._build_general_system_prompt()
+                    history_msgs = self._format_history_messages(conversation_history)
+                    messages = [{"role": "system", "content": sys_prompt}] + history_msgs + [{"role": "user", "content": message}]
+                    stream = self.client.chat.completions.create(
+                        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=600,
+                        stream=True
+                    )
+                    full_reply = []
+                    for chunk in stream:
+                        delta = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else ""
+                        if delta:
+                            full_reply.append(delta)
+                            yield f"data: {json.dumps({'token': delta})}\n\n"
+
+                    complete_reply = "".join(full_reply).strip()
+                    yield f"data: {json.dumps({'done': True, 'mode': 'general', 'reply': complete_reply, 'sources': [], 'timestamp': self._get_timestamp()})}\n\n"
+                    return
+
+            # Fallback for attachments, offline responses, or non-streamable paths
+            resp = self.process_message(
+                message=message,
+                mode=mode,
+                attachment=attachment,
+                conversation_history=conversation_history
+            )
+            words = re.findall(r'\S+|\s+', resp.reply)
+            for w in words:
+                yield f"data: {json.dumps({'token': w})}\n\n"
+
+            sources = [s.model_dump() if hasattr(s, "model_dump") else (s.dict() if hasattr(s, "dict") else s) for s in resp.sources]
+            yield f"data: {json.dumps({'done': True, 'mode': resp.mode, 'reply': resp.reply, 'sources': sources, 'timestamp': resp.timestamp, 'attachment_info': resp.attachment_info})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
 
 # Global orchestrator
 orchestrator = ChatOrchestrator()
