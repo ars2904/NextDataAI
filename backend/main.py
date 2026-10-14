@@ -100,10 +100,10 @@ def serve_index():
 @app.get("/logo.png")
 def serve_logo():
     """Direct route for official NexaData AI logo badge."""
-    logo_file = BASE_DIR / "NexaData AI_ Ask_Analyze_Discover.png"
+    logo_file = FRONTEND_DIR / "logo.png"
     if logo_file.exists():
         return FileResponse(str(logo_file), media_type="image/png")
-    return FileResponse(str(FRONTEND_DIR / "logo.png"), media_type="image/png")
+    return FileResponse(str(FRONTEND_DIR / "icon.png"), media_type="image/png")
 
 @app.get("/api/health")
 def health_check():
