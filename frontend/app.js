@@ -811,12 +811,24 @@ async function submitMessage() {
   btnSend.disabled = true;
 
   try {
+    // Extract prior conversational turns for context (up to last 8 messages prior to current turn)
+    const priorThread = threads[modeForThisQuery] || [];
+    const previousMessages = priorThread.slice(0, -1);
+    const recentHistory = previousMessages
+      .filter(m => (m.type === 'user' && m.text) || (m.type === 'bot' && m.reply))
+      .slice(-8)
+      .map(m => ({
+        role: m.type === 'user' ? 'user' : 'assistant',
+        content: m.type === 'user' ? (m.text || '') : (m.reply || '')
+      }));
+
     let res;
     if (attachmentToSend && attachmentToSend.file) {
       // Multipart upload with file
       const formData = new FormData();
       formData.append('message', query || '');
       formData.append('mode', modeForThisQuery);
+      formData.append('conversation_history', JSON.stringify(recentHistory));
       formData.append('file', attachmentToSend.file);
 
       res = await fetch('/api/chat-upload', {
@@ -830,7 +842,8 @@ async function submitMessage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: query,
-          mode: modeForThisQuery
+          mode: modeForThisQuery,
+          conversation_history: recentHistory
         })
       });
     }

@@ -1,5 +1,6 @@
 """Chat Orchestrator for Dual-Mode Conversation."""
 import os
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
@@ -26,8 +27,61 @@ class ChatOrchestrator:
     def _get_timestamp(self) -> str:
         return datetime.now().strftime("%I:%M %p")
 
-    def handle_company_question(self, message: str, attachment: Optional[Dict[str, Any]] = None) -> ChatResponse:
-        """Query company PDF documents using RAG or direct database records, with optional temporary attachment."""
+    def _format_history_messages(self, conversation_history: Optional[List[Any]]) -> List[Dict[str, str]]:
+        """Extract and format recent conversation messages into OpenAI message dictionaries."""
+        formatted = []
+        if not conversation_history:
+            return formatted
+        for item in conversation_history[-8:]:
+            role = getattr(item, "role", None) or (item.get("role") if isinstance(item, dict) else "user")
+            content = getattr(item, "content", None) or (item.get("content") if isinstance(item, dict) else "")
+            if role in ("user", "assistant") and content:
+                formatted.append({"role": role, "content": str(content).strip()})
+        return formatted
+
+    def _expand_query_with_history(self, message: str, conversation_history: Optional[List[Any]]) -> str:
+        """Expand short follow-up questions with subject context from previous conversation turns."""
+        msg = message.strip()
+        if not conversation_history or not msg:
+            return msg
+
+        # Tokenize query words to prevent substring false positives
+        words = msg.split()
+        tokens = set(re.findall(r'\b[a-zA-Z]+\b', msg.lower()))
+        pronouns = {"it", "its", "they", "them", "their", "this", "that", "these", "those"}
+        follow_up_cues = {
+            "cost", "price", "pricing", "features", "details", "specifications",
+            "who", "why", "when", "where", "how"
+        }
+
+        # If sentence is long (8+ words) and contains no reference pronouns, it is standalone
+        if len(words) >= 8 and not tokens.intersection(pronouns):
+            return msg
+
+        # For shorter queries, check if it contains pronouns or follow-up cues or is very short
+        is_follow_up = len(words) <= 5 or bool(tokens.intersection(pronouns)) or bool(tokens.intersection(follow_up_cues))
+        if not is_follow_up:
+            return msg
+
+        recent_user_turn = None
+        for item in reversed(conversation_history):
+            role = getattr(item, "role", None) or (item.get("role") if isinstance(item, dict) else "")
+            content = getattr(item, "content", None) or (item.get("content") if isinstance(item, dict) else "")
+            if role == "user" and content and content.strip() != msg:
+                recent_user_turn = content.strip()
+                break
+
+        if recent_user_turn:
+            return f"{recent_user_turn} {msg}"
+        return msg
+
+    def handle_company_question(
+        self,
+        message: str,
+        attachment: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Any]] = None
+    ) -> ChatResponse:
+        """Query company PDF documents using RAG or direct database records, with optional temporary attachment and multi-turn context."""
         attachment_sources = []
         attachment_info = None
 
@@ -51,6 +105,7 @@ class ChatOrchestrator:
                 prompt_text = message.strip() if message.strip() else "Analyze this image in the context of NexaData operations, describe its contents, and explain key takeaways."
                 if self.client:
                     try:
+                        history_msgs = self._format_history_messages(conversation_history)
                         response = self.client.chat.completions.create(
                             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                             messages=[
@@ -61,6 +116,7 @@ class ChatOrchestrator:
                                         "Relate the image content to NexaData enterprise solutions or answer the user query accurately."
                                     )
                                 },
+                                *history_msgs,
                                 {
                                     "role": "user",
                                     "content": [
@@ -103,8 +159,14 @@ class ChatOrchestrator:
                     attachment_info=attachment_info
                 )
 
+        # Context-aware query expansion for follow-up questions
+        effective_query = self._expand_query_with_history(message, conversation_history)
+
         # 1. First check if this is a live Database query (Products, Clients, Transactions)
         db_content = query_database_smart(message)
+        if not db_content and effective_query != message:
+            db_content = query_database_smart(effective_query)
+
         if db_content:
             sources = [
                 SourceCitation(
@@ -122,8 +184,10 @@ class ChatOrchestrator:
                 attachment_info=attachment_info
             )
 
-        # 2. Query company PDF documents using RAG
-        context_chunks = knowledge_base.retrieve_context(message, top_k=2) if message else []
+        # 2. Query company PDF documents using RAG with expanded retrieval query
+        context_chunks = knowledge_base.retrieve_context(effective_query, top_k=2) if effective_query else []
+        if not context_chunks and message and effective_query != message:
+            context_chunks = knowledge_base.retrieve_context(message, top_k=2)
 
         sources = list(attachment_sources)
         for c in context_chunks:
@@ -157,6 +221,7 @@ class ChatOrchestrator:
                         f"OFFICIAL NEXADATA DOCUMENTS:\n{kb_text}\n\n"
                         f"USER QUERY: {user_prompt}"
                     )
+                    history_msgs = self._format_history_messages(conversation_history)
                     response = self.client.chat.completions.create(
                         model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                         messages=[
@@ -167,6 +232,7 @@ class ChatOrchestrator:
                                     "and official NexaData company knowledge. Keep the uploaded file temporary and clearly distinguish it."
                                 )
                             },
+                            *history_msgs,
                             {"role": "user", "content": full_prompt}
                         ],
                         temperature=0.2,
@@ -221,12 +287,15 @@ class ChatOrchestrator:
         if self.client:
             try:
                 sys_prompt, user_prompt = knowledge_base.build_grounded_prompt(message, context_chunks)
+                history_msgs = self._format_history_messages(conversation_history)
+                messages = (
+                    [{"role": "system", "content": sys_prompt}]
+                    + history_msgs
+                    + [{"role": "user", "content": user_prompt}]
+                )
                 response = self.client.chat.completions.create(
                     model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                    messages=[
-                        {"role": "system", "content": sys_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
+                    messages=messages,
                     temperature=0.1,
                     max_tokens=500
                 )
@@ -315,8 +384,13 @@ class ChatOrchestrator:
 
         return None
 
-    def handle_general_question(self, message: str, attachment: Optional[Dict[str, Any]] = None) -> ChatResponse:
-        """Answer general-purpose AI question or direct database query, with vision and document analysis."""
+    def handle_general_question(
+        self,
+        message: str,
+        attachment: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Any]] = None
+    ) -> ChatResponse:
+        """Answer general-purpose AI question or direct database query, with vision, document analysis, and multi-turn context."""
         attachment_sources = []
         attachment_info = None
 
@@ -340,6 +414,7 @@ class ChatOrchestrator:
                 prompt_text = message.strip() if message.strip() else "Analyze this image thoroughly. Describe all elements, extract or transcribe any text or data visualizations, and provide key takeaways."
                 if self.client:
                     try:
+                        history_msgs = self._format_history_messages(conversation_history)
                         response = self.client.chat.completions.create(
                             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                             messages=[
@@ -350,6 +425,7 @@ class ChatOrchestrator:
                                         "\nYou have advanced multimodal vision capabilities. Inspect the provided image in detail, identify objects, interpret charts/data, and answer the user query with structure and clarity."
                                     )
                                 },
+                                *history_msgs,
                                 {
                                     "role": "user",
                                     "content": [
@@ -405,6 +481,7 @@ class ChatOrchestrator:
                             f"CONTENT:\n```\n{doc_text}\n```\n\n"
                             f"USER INSTRUCTION: {user_prompt}"
                         )
+                        history_msgs = self._format_history_messages(conversation_history)
                         response = self.client.chat.completions.create(
                             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                             messages=[
@@ -415,6 +492,7 @@ class ChatOrchestrator:
                                         "\nYou are analyzing a user-uploaded file. Provide accurate, well-structured summaries and data insights."
                                     )
                                 },
+                                *history_msgs,
                                 {"role": "user", "content": full_prompt}
                             ],
                             temperature=0.2,
@@ -452,9 +530,14 @@ class ChatOrchestrator:
                     attachment_info=attachment_info
                 )
 
-        # 1. Check for database query
+        # 1. Check for database query (with query expansion for follow-up turns)
+        effective_query = self._expand_query_with_history(message, conversation_history)
         db_content = query_database_smart(message)
-        if db_content and any(k in message.lower() for k in ["database", "transaction", "client master", "product"]):
+        if not db_content and effective_query != message:
+            db_content = query_database_smart(effective_query)
+
+        combined_check = (message + " " + effective_query).lower()
+        if db_content and any(k in combined_check for k in ["database", "transaction", "client master", "product", "customer", "order", "inventory", "department"]):
             return ChatResponse(
                 reply=db_content,
                 mode="general",
@@ -474,19 +557,19 @@ class ChatOrchestrator:
                 attachment_info=attachment_info
             )
 
-        # 3. If OpenAI client available, invoke with dynamic temporal system prompt
+        # 3. If OpenAI client available, invoke with dynamic temporal system prompt and conversation history
         if self.client:
             try:
                 sys_prompt = self._build_general_system_prompt()
+                history_msgs = self._format_history_messages(conversation_history)
+                messages = (
+                    [{"role": "system", "content": sys_prompt}]
+                    + history_msgs
+                    + [{"role": "user", "content": message}]
+                )
                 response = self.client.chat.completions.create(
                     model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": sys_prompt
-                        },
-                        {"role": "user", "content": message}
-                    ],
+                    messages=messages,
                     temperature=0.7,
                     max_tokens=600
                 )
@@ -503,12 +586,20 @@ class ChatOrchestrator:
 
         # 4. Dynamic Offline General AI Answer
         ctx = self._get_dynamic_context()
-        reply = (
-            f"Hello! In **General Questions** mode, I am a versatile general-purpose AI assistant "
-            f"ready to help with any topic, idea, writing, research, or question.\n\n"
-            f"*(Current date: {ctx['current_date']}. To enable cloud LLM generative completions, "
-            f"configure your server OPENAI_API_KEY in `.env`).*"
-        )
+        if conversation_history:
+            reply = (
+                f"Continuing our conversation on **'{message}'**:\n\n"
+                f"I acknowledge your follow-up context. In offline mode without an active cloud LLM key, "
+                f"detailed generative continuation is limited. You can query official company documents "
+                f"and database records in **Company Questions** mode, or configure `OPENAI_API_KEY` for live generative responses."
+            )
+        else:
+            reply = (
+                f"Hello! In **General Questions** mode, I am a versatile general-purpose AI assistant "
+                f"ready to help with any topic, idea, writing, research, or question.\n\n"
+                f"*(Current date: {ctx['current_date']}. To enable cloud LLM generative completions, "
+                f"configure your server OPENAI_API_KEY in `.env`).*"
+            )
         return ChatResponse(
             reply=reply,
             mode="general",
@@ -517,12 +608,18 @@ class ChatOrchestrator:
             attachment_info=attachment_info
         )
 
-    def process_message(self, message: str, mode: str = "company", attachment: Optional[Dict[str, Any]] = None) -> ChatResponse:
-        """Route message based on selected tab mode with optional temporary attachment."""
+    def process_message(
+        self,
+        message: str,
+        mode: str = "company",
+        attachment: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Any]] = None
+    ) -> ChatResponse:
+        """Route message based on selected tab mode with optional temporary attachment and conversation history."""
         if mode == "company":
-            return self.handle_company_question(message, attachment=attachment)
+            return self.handle_company_question(message, attachment=attachment, conversation_history=conversation_history)
         else:
-            return self.handle_general_question(message, attachment=attachment)
+            return self.handle_general_question(message, attachment=attachment, conversation_history=conversation_history)
 
 # Global orchestrator
 orchestrator = ChatOrchestrator()

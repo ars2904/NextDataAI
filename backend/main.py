@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, Response
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from backend.models import ChatRequest, ChatResponse, BrandInfoResponse, PromptChip, ExportPdfRequest
+from backend.models import ChatRequest, ChatResponse, BrandInfoResponse, PromptChip, ExportPdfRequest, ConversationMessage
 from backend.orchestrator import orchestrator
 from backend.pdf_exporter import generate_conversation_pdf
 from backend.file_handler import process_uploaded_file, validate_file, MAX_FILE_SIZE_BYTES
@@ -101,13 +101,14 @@ def chat_endpoint(request: ChatRequest):
     Dual-mode chat endpoint:
     - mode="company": Queries VedaNova PDF knowledge base via RAG.
     - mode="general": Open conversational AI.
-    Supports optional temporary attachment payload.
+    Supports optional temporary attachment payload and multi-turn conversation history.
     """
     try:
         response = orchestrator.process_message(
             message=request.message.strip(),
             mode=request.mode,
-            attachment=request.attachment
+            attachment=request.attachment,
+            conversation_history=request.conversation_history
         )
         return response
     except Exception as e:
@@ -118,6 +119,7 @@ async def chat_upload_endpoint(
     message: str = Form(""),
     mode: str = Form("company"),
     session_id: Optional[str] = Form(None),
+    conversation_history: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None)
 ):
     """
@@ -126,6 +128,18 @@ async def chat_upload_endpoint(
     Uploads remain strictly temporary and are not added to the permanent knowledge base.
     """
     try:
+        parsed_history = []
+        if conversation_history:
+            import json
+            try:
+                raw_list = json.loads(conversation_history)
+                if isinstance(raw_list, list):
+                    for item in raw_list:
+                        if isinstance(item, dict) and "role" in item and "content" in item:
+                            parsed_history.append(ConversationMessage(role=item["role"], content=str(item["content"])))
+            except Exception:
+                pass
+
         attachment_data = None
         if file and file.filename:
             file_bytes = await file.read()
@@ -139,7 +153,8 @@ async def chat_upload_endpoint(
         response = orchestrator.process_message(
             message=message.strip(),
             mode=mode,
-            attachment=attachment_data
+            attachment=attachment_data,
+            conversation_history=parsed_history
         )
         return response
     except HTTPException:

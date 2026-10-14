@@ -8,11 +8,16 @@ class SourceCitation(BaseModel):
     score: float
     snippet: str
 
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant", "system"] = Field("user", description="Message author role")
+    content: str = Field(..., description="Message text content")
+
 class ChatRequest(BaseModel):
     message: str = Field("", description="User's query (can be empty if attachment provided)")
     mode: Literal["general", "company"] = Field("company", description="Active chat mode")
     session_id: Optional[str] = Field(None, description="Optional session/conversation identifier")
     attachment: Optional[Dict[str, Any]] = Field(None, description="Optional attached file payload")
+    conversation_history: Optional[List[ConversationMessage]] = Field(default=[], description="Previous conversation turns for multi-turn context")
 
 class ChatResponse(BaseModel):
     reply: str
