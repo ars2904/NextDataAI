@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>NexaData AI - Ask. Analyze. Discover.</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
-  <link rel="stylesheet" href="/static/style.css?v=3.3">
+  <link rel="stylesheet" href="/static/style.css?v=3.4">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body data-mode="company">
@@ -102,18 +102,18 @@
       </div>
     </div>
 
-    <!-- Mode Switcher Sub-Header Bar (Positioned below Top Nav) -->
+    <!-- Floating Dual-Mode Switcher -->
     <div class="mode-bar" id="modeBar">
       <div class="mode-bar-container">
         <button class="mode-bar-btn active" id="pillCompany" onclick="switchMode('company')">
           <span class="mode-icon">📄</span>
-          <span class="pill-text-desktop">Company Questions</span>
-          <span class="pill-text-mobile">Company Questions</span>
+          <span class="mode-desktop-label">Company Questions</span>
+          <span class="mode-mobile-label">Company</span>
         </button>
         <button class="mode-bar-btn" id="pillGeneral" onclick="switchMode('general')">
           <span class="mode-icon">💬</span>
-          <span class="pill-text-desktop">General Questions</span>
-          <span class="pill-text-mobile">General Questions</span>
+          <span class="mode-desktop-label">General Questions</span>
+          <span class="mode-mobile-label">General</span>
         </button>
       </div>
     </div>
@@ -302,6 +302,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=3.5"></script>
+  <script src="/static/app.js?v=3.6"></script>
 </body>
 </html>

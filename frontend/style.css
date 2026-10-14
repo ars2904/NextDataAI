@@ -523,61 +523,66 @@ body {
   transform: none;
 }
 
-/* Dedicated Mode Switcher Sub-Header Bar */
+/* Floating Dual-Mode Switcher */
 .mode-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 24px;
-  background-color: var(--top-nav-bg);
-  border-bottom: 1px solid var(--border-color);
-  backdrop-filter: blur(12px);
+  padding: 8px 16px 2px 16px;
+  background: transparent;
+  border-bottom: none;
   z-index: 9;
   flex-shrink: 0;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .mode-bar-container {
-  display: flex;
+  display: inline-flex;
   background: var(--chip-bg);
   border: 1px solid var(--border-color);
-  padding: 4px;
-  border-radius: 40px;
-  gap: 4px;
-  width: 100%;
-  max-width: 440px;
+  padding: 3px;
+  border-radius: 30px;
+  gap: 3px;
+  width: auto;
   box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .mode-bar-btn {
-  flex: 1;
   background: transparent;
   border: none;
-  padding: 8px 16px;
-  border-radius: 30px;
-  font-size: 13.5px;
+  padding: 6px 16px;
+  border-radius: 24px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .mode-bar-btn .mode-icon {
-  font-size: 15px;
+  font-size: 14px;
   display: inline-flex;
   align-items: center;
+}
+
+.mode-desktop-label {
+  display: inline;
+}
+
+.mode-mobile-label {
+  display: none;
 }
 
 .mode-bar-btn.active {
   background: var(--accent-blue);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.4);
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
 }
 
 .mode-bar-btn:hover:not(.active) {
@@ -1455,33 +1460,46 @@ body[data-mode="general"] #companyPillsRow,
     display: none; /* Icon-only on mobile to save space */
   }
 
-  /* Dedicated Mode Switcher Sub-Header on Mobile */
+  /* Floating Mode Switcher on Mobile */
   .mode-bar {
-    padding: 8px 12px;
+    padding: 6px 12px 2px 12px;
     width: 100%;
+    display: flex;
+    justify-content: center;
     box-sizing: border-box;
+    background: transparent;
+    border-bottom: none;
   }
 
   .mode-bar-container {
-    width: 100%;
-    max-width: 100%;
+    width: auto;
+    max-width: 270px;
     padding: 3px;
     border-radius: 26px;
-    gap: 4px;
+    gap: 3px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .mode-bar-btn {
-    padding: 8px 10px;
-    font-size: 12.5px;
-    min-height: 40px;
+    padding: 7px 14px;
+    font-size: 12px;
+    min-height: 36px;
     border-radius: 20px;
-    gap: 6px;
+    gap: 5px;
     flex: 1;
     justify-content: center;
   }
 
+  .mode-desktop-label {
+    display: none;
+  }
+
+  .mode-mobile-label {
+    display: inline;
+  }
+
   .mode-bar-btn .mode-icon {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   /* Chat Scroll Area on Mobile */
@@ -2054,15 +2072,16 @@ body[data-mode="general"] #companyPillsRow,
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
 }
 
-/* 9. Mode Switcher Sub-Header in Light Theme */
+/* 9. Mode Switcher Floating Capsule in Light Theme */
 [data-theme="light"] .mode-bar {
-  background: rgba(255, 255, 255, 0.95);
-  border-bottom: 1px solid #e2e8f0;
+  background: transparent;
+  border-bottom: none;
 }
 
 [data-theme="light"] .mode-bar-container {
-  background: #f1f5f9;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 }
 
 [data-theme="light"] .mode-bar-btn {
