@@ -17,6 +17,13 @@ from backend.file_handler import process_uploaded_file, validate_file, MAX_FILE_
 from database.postgres import (
     get_products_list,
     get_master_records_list,
+    get_customers_list,
+    get_orders_list,
+    get_inventory_list,
+    get_departments_list,
+    get_employees_list,
+    get_policies_list,
+    get_faqs_list,
     get_transactions_list,
     get_analytics_summary,
     search_records,
@@ -252,21 +259,57 @@ def get_db_status():
 
 @app.get("/api/db/products")
 def get_products():
-    """Retrieve all 5 product catalog records."""
+    """Retrieve all product catalog records (24 records)."""
     return {"products": get_products_list()}
 
 @app.get("/api/db/masters")
 def get_masters():
-    """Retrieve all 5 client master records."""
+    """Retrieve all client master records."""
     return {"clients": get_master_records_list()}
+
+@app.get("/api/db/customers")
+def get_customers(limit: int = 100, tier: Optional[str] = None, status: Optional[str] = None):
+    """Retrieve customer accounts (55 records)."""
+    return {"customers": get_customers_list(limit=limit, tier=tier, status=status)}
+
+@app.get("/api/db/orders")
+def get_orders(limit: int = 50, customer_code: Optional[str] = None, status: Optional[str] = None):
+    """Retrieve customer orders (115 records)."""
+    return {"orders": get_orders_list(limit=limit, customer_code=customer_code, status=status)}
+
+@app.get("/api/db/inventory")
+def get_inventory(limit: int = 50, low_stock_only: bool = False):
+    """Retrieve inventory and stock records."""
+    return {"inventory": get_inventory_list(limit=limit, low_stock_only=low_stock_only)}
+
+@app.get("/api/db/departments")
+def get_departments():
+    """Retrieve corporate departments."""
+    return {"departments": get_departments_list()}
+
+@app.get("/api/db/employees")
+def get_employees(limit: int = 50, department_code: Optional[str] = None):
+    """Retrieve staff employee directory."""
+    return {"employees": get_employees_list(limit=limit, department_code=department_code)}
+
+@app.get("/api/db/policies")
+def get_policies(category: Optional[str] = None):
+    """Retrieve official corporate policies."""
+    return {"policies": get_policies_list(category=category)}
+
+@app.get("/api/db/faqs")
+def get_faqs(category: Optional[str] = None):
+    """Retrieve knowledge base FAQs."""
+    return {"faqs": get_faqs_list(category=category)}
 
 @app.get("/api/db/transactions")
 def get_transactions(limit: int = 50, client_code: str = None, status: str = None):
-    """Retrieve all 20 business transactions."""
+    """Retrieve business transactions (215 records)."""
     return {"transactions": get_transactions_list(limit=limit, client_code=client_code, status=status)}
 
 @app.get("/api/db/search")
 def search_db(q: str):
-    """Search records across products, clients, and transactions."""
+    """Search records across products, customers, transactions, inventory, and policies."""
     return search_records(q)
+
 

@@ -1,9 +1,25 @@
 """PostgreSQL Database Engine & Data Access Layer for NexaData AI.
 
-Supports standard PostgreSQL via DATABASE_URL or individual POSTGRES_* environment variables.
+Supports standard PostgreSQL via DATABASE_URL or discrete POSTGRES_* environment variables.
 Provides automatic, zero-crash fallback to local SQLite for environments where a live
 PostgreSQL daemon is not locally running.
-Pre-seeds 5 Products, 5 Master Records (Clients), and 20 Transactions.
+
+Relational schema covers 14 business areas:
+- Company Information
+- Departments
+- Employees
+- Product Categories
+- Suppliers
+- Products (24 records >= 20)
+- Inventory Records (24 records)
+- Customer Accounts (55 records >= 50)
+- Clients Master (5 compatible accounts)
+- Orders (115 records >= 100)
+- Order Line Items (260+ records)
+- Payments (115 records)
+- Sales & Subscription Transactions (215 records >= 200)
+- Corporate Policies (10 records)
+- FAQs (15 records)
 """
 import os
 import sys
@@ -13,9 +29,28 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, select
+    create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+
+from database.seed_builder import (
+    COMPANY_INFO_DATA,
+    DEPARTMENTS_DATA,
+    EMPLOYEES_DATA,
+    CATEGORIES_DATA,
+    SUPPLIERS_DATA,
+    PRODUCTS_DATA,
+    INVENTORY_DATA,
+    CUSTOMERS_DATA,
+    CLIENTS_MASTER_DATA,
+    ORDERS_DATA,
+    ORDER_ITEMS_DATA,
+    PAYMENTS_DATA,
+    TRANSACTIONS_DATA,
+    POLICIES_DATA,
+    FAQS_DATA,
+    ORIGINAL_20_TRANSACTIONS,
+)
 
 logger = logging.getLogger("nexadata.database")
 logger.setLevel(logging.INFO)
@@ -23,24 +58,180 @@ logger.setLevel(logging.INFO)
 Base = declarative_base()
 
 # ============================================================================
-# ORM Models
+# ORM Models (15 Relational Entities)
 # ============================================================================
 
+class CompanyInfo(Base):
+    """Company profile and legal entity metadata."""
+    __tablename__ = "company_info"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_name = Column(String(150), nullable=False)
+    legal_name = Column(String(150), nullable=False)
+    tagline = Column(String(255), nullable=False)
+    tax_id = Column(String(50), nullable=True)
+    founded_year = Column(Integer, nullable=False)
+    headquarters = Column(String(255), nullable=False)
+    website = Column(String(120), nullable=False)
+    support_email = Column(String(120), nullable=False)
+    sales_email = Column(String(120), nullable=False)
+    phone = Column(String(50), nullable=False)
+    mission = Column(Text, nullable=False)
+    vision = Column(Text, nullable=False)
+    fiscal_year_end = Column(String(30), default="December 31")
+    primary_currency = Column(String(10), default="USD")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "company_name": self.company_name,
+            "legal_name": self.legal_name,
+            "tagline": self.tagline,
+            "tax_id": self.tax_id,
+            "founded_year": self.founded_year,
+            "headquarters": self.headquarters,
+            "website": self.website,
+            "support_email": self.support_email,
+            "sales_email": self.sales_email,
+            "phone": self.phone,
+            "mission": self.mission,
+            "vision": self.vision,
+            "fiscal_year_end": self.fiscal_year_end,
+            "primary_currency": self.primary_currency,
+        }
+
+
+class Department(Base):
+    """Corporate business departments and budget allocations."""
+    __tablename__ = "departments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    department_code = Column(String(30), unique=True, nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    head_of_department = Column(String(120), nullable=False)
+    budget = Column(Float, nullable=False)
+    location = Column(String(120), nullable=False)
+    employee_count = Column(Integer, default=0)
+    contact_email = Column(String(120), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "department_code": self.department_code,
+            "name": self.name,
+            "head_of_department": self.head_of_department,
+            "budget": self.budget,
+            "location": self.location,
+            "employee_count": self.employee_count,
+            "contact_email": self.contact_email,
+        }
+
+
+class Employee(Base):
+    """Staff and key personnel directory."""
+    __tablename__ = "employees"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_code = Column(String(30), unique=True, nullable=False, index=True)
+    first_name = Column(String(60), nullable=False)
+    last_name = Column(String(60), nullable=False)
+    email = Column(String(120), unique=True, nullable=False)
+    phone = Column(String(30), nullable=True)
+    department_code = Column(String(30), nullable=False)
+    role = Column(String(120), nullable=False)
+    salary = Column(Float, nullable=False)
+    hire_date = Column(String(30), nullable=False)
+    status = Column(String(30), default="Active")
+    location = Column(String(120), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "employee_code": self.employee_code,
+            "full_name": f"{self.first_name} {self.last_name}",
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "email": self.email,
+            "phone": self.phone,
+            "department_code": self.department_code,
+            "role": self.role,
+            "salary": self.salary,
+            "hire_date": self.hire_date,
+            "status": self.status,
+            "location": self.location,
+        }
+
+
+class Category(Base):
+    """Product and solution taxonomy categories."""
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category_code = Column(String(30), unique=True, nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "category_code": self.category_code,
+            "name": self.name,
+            "description": self.description,
+        }
+
+
+class Supplier(Base):
+    """Infrastructure partners, cloud providers, and hardware vendors."""
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_code = Column(String(30), unique=True, nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    contact_name = Column(String(100), nullable=False)
+    email = Column(String(120), nullable=False)
+    phone = Column(String(30), nullable=True)
+    country = Column(String(60), nullable=False)
+    service_type = Column(String(120), nullable=False)
+    rating = Column(Float, default=5.0)
+    payment_terms = Column(String(50), default="Net 30")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "supplier_code": self.supplier_code,
+            "name": self.name,
+            "contact_name": self.contact_name,
+            "email": self.email,
+            "country": self.country,
+            "service_type": self.service_type,
+            "rating": self.rating,
+            "payment_terms": self.payment_terms,
+        }
+
+
 class Product(Base):
-    """Product catalog record."""
+    """Product catalog record (24 products across all tiers)."""
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_code = Column(String(50), unique=True, nullable=False, index=True)
     name = Column(String(150), nullable=False)
-    tier = Column(String(50), nullable=False)  # Enterprise, Business, Developer, Addon
+    tier = Column(String(50), nullable=False)
+    category_code = Column(String(30), nullable=True)
+    supplier_code = Column(String(30), nullable=True)
     price = Column(Float, nullable=False)
-    billing_type = Column(String(50), nullable=False)  # Monthly, Setup Fee, Annual
+    cost_price = Column(Float, default=0.0)
+    billing_type = Column(String(50), nullable=False)
+    stock_quantity = Column(Integer, default=100)
     description = Column(Text, nullable=False)
     features = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    transactions = relationship("Transaction", back_populates="product")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -48,15 +239,89 @@ class Product(Base):
             "product_code": self.product_code,
             "name": self.name,
             "tier": self.tier,
+            "category_code": self.category_code,
             "price": self.price,
+            "cost_price": self.cost_price,
             "billing_type": self.billing_type,
+            "stock_quantity": self.stock_quantity,
             "description": self.description,
             "features": self.features,
+            "is_active": self.is_active,
+        }
+
+
+class Inventory(Base):
+    """Inventory levels, warehouse clusters, and reorder alerts."""
+    __tablename__ = "inventory"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sku = Column(String(60), unique=True, nullable=False, index=True)
+    product_code = Column(String(50), nullable=False, index=True)
+    warehouse_location = Column(String(120), nullable=False)
+    quantity_available = Column(Integer, nullable=False, default=0)
+    quantity_reserved = Column(Integer, nullable=False, default=0)
+    reorder_level = Column(Integer, nullable=False, default=10)
+    unit_cost = Column(Float, nullable=False)
+    status = Column(String(40), default="In Stock")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "sku": self.sku,
+            "product_code": self.product_code,
+            "warehouse_location": self.warehouse_location,
+            "quantity_available": self.quantity_available,
+            "quantity_reserved": self.quantity_reserved,
+            "reorder_level": self.reorder_level,
+            "unit_cost": self.unit_cost,
+            "status": self.status,
+        }
+
+
+class Customer(Base):
+    """Customer enterprise accounts (55 accounts across industries)."""
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    customer_code = Column(String(50), unique=True, nullable=False, index=True)
+    company_name = Column(String(150), nullable=False)
+    contact_name = Column(String(100), nullable=False)
+    email = Column(String(120), nullable=False)
+    phone = Column(String(40), nullable=True)
+    city = Column(String(80), nullable=False)
+    state = Column(String(80), nullable=True)
+    country = Column(String(80), nullable=False)
+    industry = Column(String(100), nullable=False)
+    tier = Column(String(50), default="Standard")
+    credit_limit = Column(Float, default=50000.0)
+    account_balance = Column(Float, default=0.0)
+    sales_rep_code = Column(String(30), nullable=True)
+    status = Column(String(40), default="Active")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "customer_code": self.customer_code,
+            "company_name": self.company_name,
+            "contact_name": self.contact_name,
+            "email": self.email,
+            "phone": self.phone,
+            "city": self.city,
+            "state": self.state,
+            "country": self.country,
+            "industry": self.industry,
+            "tier": self.tier,
+            "credit_limit": self.credit_limit,
+            "account_balance": self.account_balance,
+            "sales_rep_code": self.sales_rep_code,
+            "status": self.status,
         }
 
 
 class ClientMaster(Base):
-    """Client / Enterprise account master record."""
+    """Client Master record (Preserved for backwards compatibility with existing tests)."""
     __tablename__ = "clients_master"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -64,13 +329,11 @@ class ClientMaster(Base):
     company_name = Column(String(150), nullable=False)
     industry = Column(String(100), nullable=False)
     region = Column(String(100), nullable=False)
-    tier = Column(String(50), nullable=False)  # Platinum, Gold, Business, Air-Gapped
+    tier = Column(String(50), nullable=False)
     contact_person = Column(String(100), nullable=False)
     email = Column(String(120), nullable=False)
-    status = Column(String(50), default="Active")  # Active, Onboarding, Review
+    status = Column(String(50), default="Active")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    transactions = relationship("Transaction", back_populates="client")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -86,32 +349,129 @@ class ClientMaster(Base):
         }
 
 
-class Transaction(Base):
-    """Sales, order, and subscription transaction records."""
-    __tablename__ = "transactions"
+class Order(Base):
+    """Customer purchase orders and subscription renewals (115 orders)."""
+    __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    transaction_ref = Column(String(50), unique=True, nullable=False, index=True)
-    client_code = Column(String(50), ForeignKey("clients_master.client_code"), nullable=False)
-    product_code = Column(String(50), ForeignKey("products.product_code"), nullable=False)
-    amount = Column(Float, nullable=False)
-    currency = Column(String(10), default="USD")
-    status = Column(String(50), nullable=False)  # Completed, Pending, Processing
-    payment_method = Column(String(50), nullable=False)  # Wire Transfer, ACH, Credit Card
-    transaction_date = Column(String(30), nullable=False)
+    order_number = Column(String(60), unique=True, nullable=False, index=True)
+    customer_code = Column(String(50), nullable=False, index=True)
+    order_date = Column(String(30), nullable=False)
+    status = Column(String(40), default="Completed")
+    total_amount = Column(Float, nullable=False)
+    discount_amount = Column(Float, default=0.0)
+    net_amount = Column(Float, nullable=False)
+    payment_status = Column(String(40), default="Paid")
+    sales_rep_code = Column(String(30), nullable=True)
+    billing_cycle = Column(String(40), default="Monthly")
     notes = Column(Text, nullable=True)
-
-    client = relationship("ClientMaster", back_populates="transactions")
-    product = relationship("Product", back_populates="transactions")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
+            "order_number": self.order_number,
+            "customer_code": self.customer_code,
+            "order_date": self.order_date,
+            "status": self.status,
+            "total_amount": self.total_amount,
+            "discount_amount": self.discount_amount,
+            "net_amount": self.net_amount,
+            "payment_status": self.payment_status,
+            "sales_rep_code": self.sales_rep_code,
+            "billing_cycle": self.billing_cycle,
+            "notes": self.notes,
+        }
+
+
+class OrderItem(Base):
+    """Line items for orders."""
+    __tablename__ = "order_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_number = Column(String(60), nullable=False, index=True)
+    product_code = Column(String(50), nullable=False, index=True)
+    quantity = Column(Integer, default=1)
+    unit_price = Column(Float, nullable=False)
+    subtotal = Column(Float, nullable=False)
+    discount = Column(Float, default=0.0)
+    line_total = Column(Float, nullable=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "order_number": self.order_number,
+            "product_code": self.product_code,
+            "quantity": self.quantity,
+            "unit_price": self.unit_price,
+            "subtotal": self.subtotal,
+            "discount": self.discount,
+            "line_total": self.line_total,
+        }
+
+
+class Payment(Base):
+    """Payment records for orders."""
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    payment_ref = Column(String(60), unique=True, nullable=False, index=True)
+    order_number = Column(String(60), nullable=False, index=True)
+    customer_code = Column(String(50), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    payment_method = Column(String(50), nullable=False)
+    status = Column(String(40), default="Success")
+    payment_date = Column(String(30), nullable=False)
+    gateway_ref = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "payment_ref": self.payment_ref,
+            "order_number": self.order_number,
+            "customer_code": self.customer_code,
+            "amount": self.amount,
+            "currency": self.currency,
+            "payment_method": self.payment_method,
+            "status": self.status,
+            "payment_date": self.payment_date,
+            "gateway_ref": self.gateway_ref,
+        }
+
+
+class Transaction(Base):
+    """Sales, order, and subscription transaction records (215 transactions)."""
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_ref = Column(String(60), unique=True, nullable=False, index=True)
+    client_code = Column(String(50), nullable=False, index=True)
+    product_code = Column(String(50), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    status = Column(String(50), nullable=False)  # Completed, Pending, Processing
+    payment_method = Column(String(50), nullable=False)
+    transaction_date = Column(String(40), nullable=False)
+    notes = Column(Text, nullable=True)
+
+    def to_dict(self, client_name_map: Optional[Dict[str, str]] = None, product_name_map: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        c_name = self.client_code
+        if client_name_map and self.client_code in client_name_map:
+            c_name = client_name_map[self.client_code]
+        
+        p_name = self.product_code
+        if product_name_map and self.product_code in product_name_map:
+            p_name = product_name_map[self.product_code]
+
+        return {
+            "id": self.id,
             "transaction_ref": self.transaction_ref,
             "client_code": self.client_code,
-            "client_name": self.client.company_name if self.client else self.client_code,
+            "client_name": c_name,
             "product_code": self.product_code,
-            "product_name": self.product.name if self.product else self.product_code,
+            "product_name": p_name,
             "amount": self.amount,
             "currency": self.currency,
             "status": self.status,
@@ -121,133 +481,68 @@ class Transaction(Base):
         }
 
 
-# ============================================================================
-# Realistic Seed Dataset (5 Products, 5 Masters, 20 Transactions)
-# ============================================================================
+class Policy(Base):
+    """Corporate governance, data privacy, and SLA policies (10 policies)."""
+    __tablename__ = "policies"
 
-SAMPLE_PRODUCTS = [
-    {
-        "product_code": "ND-ENT-01",
-        "name": "NexaData Enterprise Engine",
-        "tier": "Enterprise Platinum",
-        "price": 12500.0,
-        "billing_type": "Monthly",
-        "description": "Full-stack hybrid RAG, document intelligence, multi-tenant sandboxing, and citation grounding.",
-        "features": "Air-gapped deployment, Custom embeddings, 99.99% SLA, Dedicated GPU clusters",
-    },
-    {
-        "product_code": "ND-CLD-02",
-        "name": "NexaData Cloud Analytics",
-        "tier": "Business",
-        "price": 4800.0,
-        "billing_type": "Monthly",
-        "description": "Managed cloud data warehouse connector with automated BI reporting and interactive SQL querying.",
-        "features": "Real-time sync, Snowflake/BigQuery connectors, Row-level security, Automated dashboards",
-    },
-    {
-        "product_code": "ND-SEC-03",
-        "name": "NexaData Secure Sandbox",
-        "tier": "Security Addon",
-        "price": 2200.0,
-        "billing_type": "Monthly",
-        "description": "Zero-leakage isolated runtime enclave for confidential document processing and PII redaction.",
-        "features": "HIPAA/SOC2 compliance, Automated PII masking, Zero data retention, Ephemeral execution",
-    },
-    {
-        "product_code": "ND-API-04",
-        "name": "NexaData Inference API Gateway",
-        "tier": "Developer",
-        "price": 1500.0,
-        "billing_type": "Monthly",
-        "description": "High-throughput sub-50ms inference gateway with rate management, token caching, and fallback.",
-        "features": "Global edge caching, Rate limits per API key, 100k requests/min, Latency routing",
-    },
-    {
-        "product_code": "ND-ETL-05",
-        "name": "NexaData Custom ETL Pipeline Suite",
-        "tier": "Professional Services",
-        "price": 7500.0,
-        "billing_type": "One-Time Setup",
-        "description": "End-to-end data ingestion engineering for legacy SQL, ERP, CRM, and unstructured PDF sources.",
-        "features": "50+ Enterprise connectors, Schema validation, Automatic deduplication, Dedicated data engineer",
-    },
-]
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    policy_code = Column(String(40), unique=True, nullable=False, index=True)
+    title = Column(String(160), nullable=False)
+    category = Column(String(60), nullable=False)
+    version = Column(String(20), default="v1.0")
+    effective_date = Column(String(30), nullable=False)
+    department_code = Column(String(30), nullable=True)
+    summary = Column(Text, nullable=False)
+    full_text = Column(Text, nullable=False)
+    status = Column(String(30), default="Active")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-SAMPLE_MASTERS = [
-    {
-        "client_code": "MST-101",
-        "company_name": "Apex Financial Corp",
-        "industry": "Fintech & Banking",
-        "region": "North America",
-        "tier": "Enterprise Platinum",
-        "contact_person": "Sarah Jenkins (VP of Analytics)",
-        "email": "s.jenkins@apexfinancial.com",
-        "status": "Active",
-    },
-    {
-        "client_code": "MST-102",
-        "company_name": "BioGenix Laboratories",
-        "industry": "Healthcare & Pharma",
-        "region": "Europe",
-        "tier": "Enterprise Gold",
-        "contact_person": "Dr. Marcus Vance (Head of R&D)",
-        "email": "m.vance@biogenix-labs.de",
-        "status": "Active",
-    },
-    {
-        "client_code": "MST-103",
-        "company_name": "Vertex Logistics Global",
-        "industry": "Supply Chain & Freight",
-        "region": "Asia-Pacific",
-        "tier": "Business",
-        "contact_person": "Kenji Tanaka (Operations Director)",
-        "email": "k.tanaka@vertexlogistics.jp",
-        "status": "Active",
-    },
-    {
-        "client_code": "MST-104",
-        "company_name": "OmniRetail Group",
-        "industry": "E-Commerce & Retail",
-        "region": "North America",
-        "tier": "Enterprise Platinum",
-        "contact_person": "Rachel Torres (Chief Technology Officer)",
-        "email": "r.torres@omniretail.com",
-        "status": "Active",
-    },
-    {
-        "client_code": "MST-105",
-        "company_name": "CyberShield Dynamics",
-        "industry": "Defense & Cyber",
-        "region": "Europe",
-        "tier": "Enterprise Air-Gapped",
-        "contact_person": "Alexey Morozov (Chief Information Security Officer)",
-        "email": "a.morozov@cybershield.eu",
-        "status": "Active",
-    },
-]
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "policy_code": self.policy_code,
+            "title": self.title,
+            "category": self.category,
+            "version": self.version,
+            "effective_date": self.effective_date,
+            "department_code": self.department_code,
+            "summary": self.summary,
+            "full_text": self.full_text,
+            "status": self.status,
+        }
 
-SAMPLE_TRANSACTIONS = [
-    {"transaction_ref": "TXN-2024-001", "client_code": "MST-101", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "Wire Transfer", "transaction_date": "2024-09-01", "notes": "Monthly Enterprise license renewal"},
-    {"transaction_ref": "TXN-2024-002", "client_code": "MST-101", "product_code": "ND-SEC-03", "amount": 2200.0, "currency": "USD", "status": "Completed", "payment_method": "Wire Transfer", "transaction_date": "2024-09-01", "notes": "Zero-leakage sandbox add-on"},
-    {"transaction_ref": "TXN-2024-003", "client_code": "MST-102", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "ACH", "transaction_date": "2024-09-05", "notes": "European pharma clinical trial RAG"},
-    {"transaction_ref": "TXN-2024-004", "client_code": "MST-103", "product_code": "ND-CLD-02", "amount": 4800.0, "currency": "USD", "status": "Completed", "payment_method": "Credit Card", "transaction_date": "2024-09-08", "notes": "APAC freight tracking analytics"},
-    {"transaction_ref": "TXN-2024-005", "client_code": "MST-104", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "Corporate ACH", "transaction_date": "2024-09-12", "notes": "E-Commerce recommendation intelligence"},
-    {"transaction_ref": "TXN-2024-006", "client_code": "MST-104", "product_code": "ND-ETL-05", "amount": 7500.0, "currency": "USD", "status": "Completed", "payment_method": "Corporate ACH", "transaction_date": "2024-09-15", "notes": "Shopify & ERP ingestion setup"},
-    {"transaction_ref": "TXN-2024-007", "client_code": "MST-105", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "Wire Transfer", "transaction_date": "2024-09-18", "notes": "Air-gapped on-premise cluster"},
-    {"transaction_ref": "TXN-2024-008", "client_code": "MST-105", "product_code": "ND-SEC-03", "amount": 2200.0, "currency": "USD", "status": "Completed", "payment_method": "Wire Transfer", "transaction_date": "2024-09-18", "notes": "Security sandbox extension"},
-    {"transaction_ref": "TXN-2024-009", "client_code": "MST-102", "product_code": "ND-API-04", "amount": 1500.0, "currency": "USD", "status": "Completed", "payment_method": "Credit Card", "transaction_date": "2024-09-22", "notes": "Laboratory edge API gateway"},
-    {"transaction_ref": "TXN-2024-010", "client_code": "MST-103", "product_code": "ND-ETL-05", "amount": 7500.0, "currency": "USD", "status": "Completed", "payment_method": "ACH", "transaction_date": "2024-09-25", "notes": "Port container telemetry pipelines"},
-    {"transaction_ref": "TXN-2024-011", "client_code": "MST-101", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "Wire Transfer", "transaction_date": "2024-10-01", "notes": "October monthly license renewal"},
-    {"transaction_ref": "TXN-2024-012", "client_code": "MST-101", "product_code": "ND-SEC-03", "amount": 2200.0, "currency": "USD", "status": "Completed", "payment_method": "Wire Transfer", "transaction_date": "2024-10-01", "notes": "October sandbox add-on"},
-    {"transaction_ref": "TXN-2024-013", "client_code": "MST-102", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "ACH", "transaction_date": "2024-10-05", "notes": "October monthly renewal"},
-    {"transaction_ref": "TXN-2024-014", "client_code": "MST-103", "product_code": "ND-CLD-02", "amount": 4800.0, "currency": "USD", "status": "Completed", "payment_method": "Credit Card", "transaction_date": "2024-10-08", "notes": "October cloud analytics"},
-    {"transaction_ref": "TXN-2024-015", "client_code": "MST-104", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Completed", "payment_method": "Corporate ACH", "transaction_date": "2024-10-10", "notes": "October enterprise license"},
-    {"transaction_ref": "TXN-2024-016", "client_code": "MST-104", "product_code": "ND-API-04", "amount": 1500.0, "currency": "USD", "status": "Completed", "payment_method": "Credit Card", "transaction_date": "2024-10-11", "notes": "Peak season inference API burst tier"},
-    {"transaction_ref": "TXN-2024-017", "client_code": "MST-105", "product_code": "ND-ENT-01", "amount": 12500.0, "currency": "USD", "status": "Pending", "payment_method": "Wire Transfer", "transaction_date": "2024-10-12", "notes": "October defense contract clearance"},
-    {"transaction_ref": "TXN-2024-018", "client_code": "MST-101", "product_code": "ND-API-04", "amount": 1500.0, "currency": "USD", "status": "Completed", "payment_method": "Credit Card", "transaction_date": "2024-10-12", "notes": "High frequency fraud query gateway"},
-    {"transaction_ref": "TXN-2024-019", "client_code": "MST-102", "product_code": "ND-ETL-05", "amount": 7500.0, "currency": "USD", "status": "Processing", "payment_method": "ACH", "transaction_date": "2024-10-13", "notes": "Genomics lab equipment telemetry setup"},
-    {"transaction_ref": "TXN-2024-020", "client_code": "MST-103", "product_code": "ND-API-04", "amount": 1500.0, "currency": "USD", "status": "Pending", "payment_method": "Credit Card", "transaction_date": "2024-10-13", "notes": "Driver mobile app query integration"},
-]
+
+class FAQ(Base):
+    """Corporate and technical FAQs (15 items)."""
+    __tablename__ = "faqs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    faq_code = Column(String(40), unique=True, nullable=False, index=True)
+    category = Column(String(60), nullable=False)
+    question = Column(String(255), nullable=False)
+    answer = Column(Text, nullable=False)
+    keywords = Column(String(255), nullable=True)
+    is_published = Column(Boolean, default=True)
+    view_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "faq_code": self.faq_code,
+            "category": self.category,
+            "question": self.question,
+            "answer": self.answer,
+            "keywords": self.keywords,
+            "is_published": self.is_published,
+            "view_count": self.view_count,
+        }
+
+
+# Backwards compatibility aliases
+SAMPLE_PRODUCTS = PRODUCTS_DATA[:5]
+SAMPLE_MASTERS = CLIENTS_MASTER_DATA
+SAMPLE_TRANSACTIONS = ORIGINAL_20_TRANSACTIONS
 
 
 # ============================================================================
@@ -269,7 +564,6 @@ class DatabaseEngine:
         # 1. Direct DATABASE_URL (Heroku/Render standard)
         db_url = os.getenv("DATABASE_URL")
         if db_url:
-            # Handle postgres:// vs postgresql://
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
             return db_url, "postgresql"
@@ -300,7 +594,6 @@ class DatabaseEngine:
 
         try:
             if db_type == "postgresql":
-                # Test postgres connection with timeout
                 self.engine = create_engine(
                     conn_str,
                     pool_pre_ping=True,
@@ -336,35 +629,125 @@ class DatabaseEngine:
         return self.SessionLocal()
 
     def seed_sample_data(self):
-        """Seed 5 products, 5 client masters, and 20 transactions if not present."""
+        """Seed all 14 business areas if records are not present."""
         session = self.get_session()
         try:
-            # 1. Products
-            p_count = session.query(Product).count()
-            if p_count == 0:
-                for p in SAMPLE_PRODUCTS:
+            # 1. Company Info
+            if session.query(CompanyInfo).count() == 0:
+                session.add(CompanyInfo(**COMPANY_INFO_DATA))
+                session.commit()
+                logger.info("Seeded Company Information.")
+
+            # 2. Departments
+            if session.query(Department).count() == 0:
+                for d in DEPARTMENTS_DATA:
+                    session.add(Department(**d))
+                session.commit()
+                logger.info("Seeded 7 Corporate Departments.")
+
+            # 3. Employees
+            if session.query(Employee).count() == 0:
+                for emp in EMPLOYEES_DATA:
+                    session.add(Employee(**emp))
+                session.commit()
+                logger.info("Seeded 25 Employees.")
+
+            # 4. Product Categories
+            if session.query(Category).count() == 0:
+                for c in CATEGORIES_DATA:
+                    session.add(Category(**c))
+                session.commit()
+                logger.info("Seeded 8 Categories.")
+
+            # 5. Suppliers
+            if session.query(Supplier).count() == 0:
+                for s in SUPPLIERS_DATA:
+                    session.add(Supplier(**s))
+                session.commit()
+                logger.info("Seeded 10 Suppliers.")
+
+            # 6. Products (24 records >= 20)
+            if session.query(Product).count() == 0:
+                for p in PRODUCTS_DATA:
                     session.add(Product(**p))
                 session.commit()
-                logger.info("Seeded 5 Product catalog records.")
+                logger.info("Seeded 24 Products.")
 
-            # 2. Master Records
-            m_count = session.query(ClientMaster).count()
-            if m_count == 0:
-                for m in SAMPLE_MASTERS:
+            # 7. Inventory (24 records)
+            if session.query(Inventory).count() == 0:
+                for inv in INVENTORY_DATA:
+                    session.add(Inventory(
+                        sku=inv["sku"],
+                        product_code=inv["product_code"],
+                        warehouse_location=inv["location"],
+                        quantity_available=inv["available"],
+                        quantity_reserved=inv["reserved"],
+                        reorder_level=inv["reorder"],
+                        unit_cost=inv["unit_cost"],
+                        status=inv["status"]
+                    ))
+                session.commit()
+                logger.info("Seeded 24 Inventory Records.")
+
+            # 8. Customers (55 records >= 50)
+            if session.query(Customer).count() == 0:
+                for cust in CUSTOMERS_DATA:
+                    session.add(Customer(**cust))
+                session.commit()
+                logger.info("Seeded 55 Customer Accounts.")
+
+            # 9. Clients Master (5 compatible accounts)
+            if session.query(ClientMaster).count() == 0:
+                for m in CLIENTS_MASTER_DATA:
                     session.add(ClientMaster(**m))
                 session.commit()
-                logger.info("Seeded 5 Client Master accounts.")
+                logger.info("Seeded 5 Client Master Accounts.")
 
-            # 3. Transactions
-            t_count = session.query(Transaction).count()
-            if t_count == 0:
-                for t in SAMPLE_TRANSACTIONS:
+            # 10. Orders (115 records >= 100)
+            if session.query(Order).count() == 0:
+                for o in ORDERS_DATA:
+                    session.add(Order(**o))
+                session.commit()
+                logger.info("Seeded 115 Orders.")
+
+            # 11. Order Items (260+ records)
+            if session.query(OrderItem).count() == 0:
+                for item in ORDER_ITEMS_DATA:
+                    session.add(OrderItem(**item))
+                session.commit()
+                logger.info("Seeded Order Line Items.")
+
+            # 12. Payments (115 records)
+            if session.query(Payment).count() == 0:
+                for pay in PAYMENTS_DATA:
+                    session.add(Payment(**pay))
+                session.commit()
+                logger.info("Seeded 115 Payments.")
+
+            # 13. Transactions (215 records >= 200)
+            if session.query(Transaction).count() == 0:
+                for t in TRANSACTIONS_DATA:
                     session.add(Transaction(**t))
                 session.commit()
-                logger.info("Seeded 20 Business Transactions.")
+                logger.info("Seeded 215 Business Transactions.")
+
+            # 14. Policies (10 corporate policies)
+            if session.query(Policy).count() == 0:
+                for pol in POLICIES_DATA:
+                    session.add(Policy(**pol))
+                session.commit()
+                logger.info("Seeded 10 Corporate Policies.")
+
+            # 15. FAQs (15 FAQs)
+            if session.query(FAQ).count() == 0:
+                for faq in FAQS_DATA:
+                    session.add(FAQ(**faq))
+                session.commit()
+                logger.info("Seeded 15 Corporate FAQs.")
+
         except Exception as e:
             session.rollback()
-            logger.error(f"Error seeding sample dataset: {e}")
+            logger.error(f"Error seeding database records: {e}")
         finally:
             session.close()
 
@@ -376,87 +759,281 @@ db_engine = DatabaseEngine()
 # Data Access & Retrieval Functions
 # ============================================================================
 
-def get_products_list() -> List[Dict[str, Any]]:
-    """Retrieve all product records."""
+def get_company_info() -> Optional[Dict[str, Any]]:
+    """Retrieve official company info record."""
     session = db_engine.get_session()
     try:
-        products = session.query(Product).all()
+        record = session.query(CompanyInfo).first()
+        return record.to_dict() if record else None
+    finally:
+        session.close()
+
+
+def get_departments_list() -> List[Dict[str, Any]]:
+    """Retrieve all corporate departments."""
+    session = db_engine.get_session()
+    try:
+        deps = session.query(Department).order_by(Department.id.asc()).all()
+        return [d.to_dict() for d in deps]
+    finally:
+        session.close()
+
+
+def get_employees_list(limit: int = 50, department_code: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve staff employees with optional department filter."""
+    session = db_engine.get_session()
+    try:
+        query = session.query(Employee)
+        if department_code:
+            query = query.filter(Employee.department_code == department_code)
+        employees = query.order_by(Employee.id.asc()).limit(limit).all()
+        return [e.to_dict() for e in employees]
+    finally:
+        session.close()
+
+
+def get_categories_list() -> List[Dict[str, Any]]:
+    """Retrieve all product categories."""
+    session = db_engine.get_session()
+    try:
+        cats = session.query(Category).order_by(Category.id.asc()).all()
+        return [c.to_dict() for c in cats]
+    finally:
+        session.close()
+
+
+def get_suppliers_list() -> List[Dict[str, Any]]:
+    """Retrieve all suppliers and hardware vendors."""
+    session = db_engine.get_session()
+    try:
+        sups = session.query(Supplier).order_by(Supplier.id.asc()).all()
+        return [s.to_dict() for s in sups]
+    finally:
+        session.close()
+
+
+def get_products_list() -> List[Dict[str, Any]]:
+    """Retrieve all product catalog records (24 records)."""
+    session = db_engine.get_session()
+    try:
+        products = session.query(Product).order_by(Product.id.asc()).all()
         return [p.to_dict() for p in products]
     finally:
         session.close()
 
 
-def get_master_records_list() -> List[Dict[str, Any]]:
-    """Retrieve all client master records."""
+def get_inventory_list(limit: int = 50, low_stock_only: bool = False) -> List[Dict[str, Any]]:
+    """Retrieve inventory levels across warehouses."""
     session = db_engine.get_session()
     try:
-        clients = session.query(ClientMaster).all()
+        query = session.query(Inventory)
+        if low_stock_only:
+            query = query.filter(Inventory.status == "Low Stock")
+        items = query.order_by(Inventory.id.asc()).limit(limit).all()
+        return [i.to_dict() for i in items]
+    finally:
+        session.close()
+
+
+def get_customers_list(limit: int = 100, tier: Optional[str] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve customer accounts (55 records)."""
+    session = db_engine.get_session()
+    try:
+        query = session.query(Customer)
+        if tier:
+            query = query.filter(Customer.tier.ilike(f"%{tier}%"))
+        if status:
+            query = query.filter(Customer.status == status)
+        customers = query.order_by(Customer.id.asc()).limit(limit).all()
+        return [c.to_dict() for c in customers]
+    finally:
+        session.close()
+
+
+def get_master_records_list() -> List[Dict[str, Any]]:
+    """Retrieve all client master records (5 records)."""
+    session = db_engine.get_session()
+    try:
+        clients = session.query(ClientMaster).order_by(ClientMaster.id.asc()).all()
         return [c.to_dict() for c in clients]
     finally:
         session.close()
 
 
-def get_transactions_list(limit: int = 50, client_code: Optional[str] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Retrieve transaction records with optional filters."""
+def get_orders_list(limit: int = 50, customer_code: Optional[str] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve order records (115 records)."""
     session = db_engine.get_session()
     try:
+        query = session.query(Order)
+        if customer_code:
+            query = query.filter(Order.customer_code == customer_code)
+        if status:
+            query = query.filter(Order.status == status)
+        orders = query.order_by(Order.id.desc()).limit(limit).all()
+        return [o.to_dict() for o in orders]
+    finally:
+        session.close()
+
+
+def get_order_items_list(order_number: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve order line items."""
+    session = db_engine.get_session()
+    try:
+        query = session.query(OrderItem)
+        if order_number:
+            query = query.filter(OrderItem.order_number == order_number)
+        items = query.all()
+        return [it.to_dict() for it in items]
+    finally:
+        session.close()
+
+
+def get_payments_list(limit: int = 50) -> List[Dict[str, Any]]:
+    """Retrieve payment records."""
+    session = db_engine.get_session()
+    try:
+        payments = session.query(Payment).order_by(Payment.id.desc()).limit(limit).all()
+        return [p.to_dict() for p in payments]
+    finally:
+        session.close()
+
+
+def _get_entity_name_maps(session) -> tuple[Dict[str, str], Dict[str, str]]:
+    """Helper to build code -> name maps for rich transaction display."""
+    c_map = {}
+    for c in session.query(Customer).all():
+        c_map[c.customer_code] = c.company_name
+    for m in session.query(ClientMaster).all():
+        c_map[m.client_code] = m.company_name
+
+    p_map = {}
+    for p in session.query(Product).all():
+        p_map[p.product_code] = p.name
+
+    return c_map, p_map
+
+
+def get_transactions_list(limit: int = 50, client_code: Optional[str] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve transaction records with client and product resolution (215 records)."""
+    session = db_engine.get_session()
+    try:
+        c_map, p_map = _get_entity_name_maps(session)
         query = session.query(Transaction)
         if client_code:
             query = query.filter(Transaction.client_code == client_code)
         if status:
             query = query.filter(Transaction.status == status)
         txns = query.order_by(Transaction.id.asc()).limit(limit).all()
-        return [t.to_dict() for t in txns]
+        return [t.to_dict(c_map, p_map) for t in txns]
+    finally:
+        session.close()
+
+
+def get_policies_list(category: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve corporate policy records (10 records)."""
+    session = db_engine.get_session()
+    try:
+        query = session.query(Policy)
+        if category:
+            query = query.filter(Policy.category.ilike(f"%{category}%"))
+        policies = query.order_by(Policy.id.asc()).all()
+        return [p.to_dict() for p in policies]
+    finally:
+        session.close()
+
+
+def get_faqs_list(category: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve corporate FAQs (15 records)."""
+    session = db_engine.get_session()
+    try:
+        query = session.query(FAQ)
+        if category:
+            query = query.filter(FAQ.category.ilike(f"%{category}%"))
+        faqs = query.order_by(FAQ.id.asc()).all()
+        return [f.to_dict() for f in faqs]
     finally:
         session.close()
 
 
 def get_analytics_summary() -> Dict[str, Any]:
-    """Retrieve high-level business analytics summary."""
+    """Retrieve high-level business analytics summary across all tables."""
     session = db_engine.get_session()
     try:
-        products = session.query(Product).all()
-        clients = session.query(ClientMaster).all()
-        txns = session.query(Transaction).all()
+        total_products = session.query(Product).count()
+        total_clients = session.query(ClientMaster).count()
+        total_customers = session.query(Customer).count()
+        total_orders = session.query(Order).count()
+        total_txns = session.query(Transaction).count()
+        total_inventory = session.query(Inventory).count()
+        total_departments = session.query(Department).count()
+        total_employees = session.query(Employee).count()
+        total_suppliers = session.query(Supplier).count()
+        total_policies = session.query(Policy).count()
+        total_faqs = session.query(FAQ).count()
 
+        txns = session.query(Transaction).all()
         total_revenue = sum(t.amount for t in txns if t.status == "Completed")
         pending_revenue = sum(t.amount for t in txns if t.status != "Completed")
 
+        orders = session.query(Order).all()
+        total_order_value = sum(o.total_amount for o in orders)
+
         return {
             "database_engine": db_engine.db_type,
-            "total_products": len(products),
-            "total_clients": len(clients),
-            "total_transactions": len(txns),
+            "total_products": total_products,
+            "total_clients": total_clients,
+            "total_customers": total_customers,
+            "total_orders": total_orders,
+            "total_order_value_usd": total_order_value,
+            "total_transactions": total_txns,
             "completed_transactions": len([t for t in txns if t.status == "Completed"]),
             "pending_transactions": len([t for t in txns if t.status != "Completed"]),
             "total_revenue_usd": total_revenue,
             "pending_revenue_usd": pending_revenue,
+            "total_inventory_items": total_inventory,
+            "total_departments": total_departments,
+            "total_employees": total_employees,
+            "total_suppliers": total_suppliers,
+            "total_policies": total_policies,
+            "total_faqs": total_faqs,
         }
     finally:
         session.close()
 
 
 def search_records(query_str: str) -> Dict[str, Any]:
-    """Search across products, client masters, and transactions."""
+    """Search across products, customers, transactions, inventory, and policies."""
     session = db_engine.get_session()
     q = f"%{query_str.lower()}%"
     try:
+        c_map, p_map = _get_entity_name_maps(session)
+
         p_matches = session.query(Product).filter(
             (Product.name.ilike(q)) | (Product.product_code.ilike(q)) | (Product.tier.ilike(q))
         ).all()
 
-        c_matches = session.query(ClientMaster).filter(
-            (ClientMaster.company_name.ilike(q)) | (ClientMaster.client_code.ilike(q)) | (ClientMaster.industry.ilike(q))
+        c_matches = session.query(Customer).filter(
+            (Customer.company_name.ilike(q)) | (Customer.customer_code.ilike(q)) | (Customer.industry.ilike(q))
         ).all()
 
         t_matches = session.query(Transaction).filter(
             (Transaction.transaction_ref.ilike(q)) | (Transaction.client_code.ilike(q)) | (Transaction.product_code.ilike(q))
         ).all()
 
+        inv_matches = session.query(Inventory).filter(
+            (Inventory.sku.ilike(q)) | (Inventory.product_code.ilike(q)) | (Inventory.warehouse_location.ilike(q))
+        ).all()
+
+        pol_matches = session.query(Policy).filter(
+            (Policy.title.ilike(q)) | (Policy.policy_code.ilike(q)) | (Policy.category.ilike(q))
+        ).all()
+
         return {
             "products": [p.to_dict() for p in p_matches],
-            "clients": [c.to_dict() for c in c_matches],
-            "transactions": [t.to_dict() for t in t_matches],
+            "customers": [c.to_dict() for c in c_matches],
+            "transactions": [t.to_dict(c_map, p_map) for t in t_matches],
+            "inventory": [i.to_dict() for i in inv_matches],
+            "policies": [pol.to_dict() for pol in pol_matches],
         }
     finally:
         session.close()
@@ -467,59 +1044,128 @@ def query_database_smart(prompt: str) -> Optional[str]:
     p_lower = prompt.lower()
 
     # Keywords for DB triggers
-    is_product_query = any(k in p_lower for k in ["product", "catalog", "offer", "pricing", "tier", "features"])
-    is_client_query = any(k in p_lower for k in ["client", "master record", "master account", "customer", "apex financial", "biogenix", "vertex logistics", "omniretail", "cybershield"])
-    is_txn_query = any(k in p_lower for k in ["transaction", "invoice", "order", "sales", "revenue", "payment", "txn-"])
-    is_db_summary = any(k in p_lower for k in ["database summary", "database stats", "records in database", "how many records"])
+    is_db_summary = any(k in p_lower for k in [
+        "database summary", "database stats", "records in database", "how many records",
+        "show database", "database status"
+    ])
+    is_inventory_query = any(k in p_lower for k in [
+        "inventory", "warehouse", "stock level", "stock quantity", "in stock",
+        "low stock", "reorder level", "sku-"
+    ])
+    is_order_query = any(k in p_lower for k in [
+        "order list", "show orders", "latest orders", "order status", "sales orders", "ord-", "purchase order"
+    ])
+    is_customer_query = any(k in p_lower for k in [
+        "customer accounts", "customer list", "show customers", "list customers", "cust-",
+        "client accounts", "master records", "apex financial", "biogenix", "vertex logistics",
+        "omniretail", "cybershield", "quantum capital", "meridian health"
+    ])
+    is_product_query = any(k in p_lower for k in [
+        "product catalog", "show products", "list products", "pricing plans", "product pricing",
+        "product tiers", "nd-ent-", "nd-cld-", "nd-sec-", "nd-api-"
+    ])
+    is_txn_query = any(k in p_lower for k in [
+        "transaction", "transactions", "txn-", "sales revenue", "payment records"
+    ])
+    is_policy_db_query = any(k in p_lower for k in [
+        "database policies", "company policies table", "list policies", "show policies",
+        "policy list", "corporate policies table", "pol-0"
+    ])
+    is_dept_query = any(k in p_lower for k in [
+        "department list", "company departments", "show departments", "corporate departments", "dep-"
+    ])
 
-    if not (is_product_query or is_client_query or is_txn_query or is_db_summary):
+    if not (is_db_summary or is_inventory_query or is_order_query or is_customer_query or
+            is_product_query or is_txn_query or is_policy_db_query or is_dept_query):
         return None
 
     response_parts = []
 
     # 1. DB Summary
-    if is_db_summary or ("database" in p_lower and "show" in p_lower):
+    if is_db_summary:
         stats = get_analytics_summary()
         response_parts.append(
-            f"### 🗄️ NexaData Enterprise Database Status\n"
-            f"- **Engine**: `{stats['database_engine'].upper()}`\n"
-            f"- **Product Records**: {stats['total_products']}\n"
-            f"- **Client Master Accounts**: {stats['total_clients']}\n"
-            f"- **Total Transactions**: {stats['total_transactions']} ({stats['completed_transactions']} Completed, {stats['pending_transactions']} Pending)\n"
-            f"- **Total Recognized Revenue**: **${stats['total_revenue_usd']:,.2f} USD**\n"
+            f"### NexaData Enterprise Relational Database Status\n"
+            f"- **Database Engine**: `{stats['database_engine'].upper()}`\n"
+            f"- **Products**: {stats['total_products']} catalog items\n"
+            f"- **Customer Accounts**: {stats['total_customers']} enterprise accounts\n"
+            f"- **Orders Processed**: {stats['total_orders']} orders (Total Value: **${stats['total_order_value_usd']:,.2f} USD**)\n"
+            f"- **Transactions**: {stats['total_transactions']} ({stats['completed_transactions']} Completed, {stats['pending_transactions']} Pending)\n"
+            f"- **Recognized Revenue**: **${stats['total_revenue_usd']:,.2f} USD** (Pending: ${stats['pending_revenue_usd']:,.2f})\n"
+            f"- **Inventory**: {stats['total_inventory_items']} warehouse stock records\n"
+            f"- **Departments & Staff**: {stats['total_departments']} departments, {stats['total_employees']} staff directory entries\n"
+            f"- **Suppliers & Vendors**: {stats['total_suppliers']} infrastructure suppliers\n"
+            f"- **Policies & FAQs**: {stats['total_policies']} enterprise policies, {stats['total_faqs']} knowledge base FAQs\n"
         )
 
-    # 2. Products
+    # 2. Inventory Query
+    if is_inventory_query:
+        low_only = "low" in p_lower
+        items = get_inventory_list(limit=25, low_stock_only=low_only)
+        table_rows = [
+            "| SKU | Product Code | Warehouse / Cluster | Available | Reserved | Reorder Level | Status |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for it in items:
+            status_badge = "[Low Stock]" if it["status"] == "Low Stock" else "[In Stock]"
+            table_rows.append(
+                f"| `{it['sku']}` | `{it['product_code']}` | {it['warehouse_location']} | **{it['quantity_available']}** | {it['quantity_reserved']} | {it['reorder_level']} | {status_badge} |"
+            )
+        response_parts.append(
+            f"### NexaData Inventory & Warehouse Stock ({len(items)} Records)\n\n" +
+            "\n".join(table_rows)
+        )
+
+    # 3. Orders Query
+    if is_order_query:
+        orders = get_orders_list(limit=15)
+        table_rows = [
+            "| Order # | Customer | Amount | Status | Payment | Date | Notes |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for o in orders:
+            status_badge = f"[{o['status']}]"
+            table_rows.append(
+                f"| `{o['order_number']}` | `{o['customer_code']}` | **${o['net_amount']:,.2f}** | {status_badge} | `{o['payment_status']}` | {o['order_date']} | {o['notes'][:50]}... |"
+            )
+        response_parts.append(
+            f"### Recent Orders & Sales Contracts ({len(orders)} Records)\n\n" +
+            "\n".join(table_rows)
+        )
+
+    # 4. Customers Query
+    if is_customer_query:
+        customers = get_customers_list(limit=15)
+        table_rows = [
+            "| Customer Code | Company Name | Industry | Tier | Credit Limit | Balance | Status |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for c in customers:
+            table_rows.append(
+                f"| `{c['customer_code']}` | **{c['company_name']}** | {c['industry']} | {c['tier']} | ${c['credit_limit']:,.0f} | ${c['account_balance']:,.2f} | `{c['status']}` |"
+            )
+        response_parts.append(
+            f"### Enterprise Customer Accounts ({len(customers)} of 55 Records Displayed)\n\n" +
+            "\n".join(table_rows)
+        )
+
+    # 5. Products Query
     if is_product_query:
         products = get_products_list()
         table_rows = [
             "| Code | Product Name | Tier | Price | Billing | Description |",
             "| :--- | :--- | :--- | :--- | :--- | :--- |"
         ]
-        for p in products:
-            table_rows.append(f"| `{p['product_code']}` | **{p['name']}** | {p['tier']} | ${p['price']:,.2f} | {p['billing_type']} | {p['description']} |")
-
+        for p in products[:12]:
+            table_rows.append(
+                f"| `{p['product_code']}` | **{p['name']}** | {p['tier']} | ${p['price']:,.2f} | {p['billing_type']} | {p['description'][:60]}... |"
+            )
         response_parts.append(
-            "### 📦 Official NexaData Product Catalog (Database Records)\n\n" +
+            f"### Product Catalog ({len(products)} Database Records)\n\n" +
             "\n".join(table_rows)
         )
 
-    # 3. Clients Master
-    if is_client_query:
-        clients = get_master_records_list()
-        table_rows = [
-            "| Client ID | Company Name | Industry | Region | Tier | Contact Person | Status |",
-            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
-        ]
-        for c in clients:
-            table_rows.append(f"| `{c['client_code']}` | **{c['company_name']}** | {c['industry']} | {c['region']} | {c['tier']} | {c['contact_person']} | `{c['status']}` |")
-
-        response_parts.append(
-            "### 🏢 Client Master Accounts (Database Records)\n\n" +
-            "\n".join(table_rows)
-        )
-
-    # 4. Transactions
+    # 6. Transactions Query
     if is_txn_query:
         # Check if query targets a specific client
         matched_client = None
@@ -537,14 +1183,48 @@ def query_database_smart(prompt: str) -> Optional[str]:
             "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
         ]
         for t in txns:
-            status_badge = f"✅ {t['status']}" if t['status'] == 'Completed' else f"⏳ {t['status']}"
-            table_rows.append(f"| `{t['transaction_ref']}` | **{t['client_name']}** | `{t['product_code']}` | ${t['amount']:,.2f} | {status_badge} | {t['payment_method']} | {t['transaction_date']} | {t['notes']} |")
+            status_badge = f"[{t['status']}]"
+            table_rows.append(
+                f"| `{t['transaction_ref']}` | **{t['client_name']}** | `{t['product_code']}` | ${t['amount']:,.2f} | {status_badge} | {t['payment_method']} | {t['transaction_date']} | {t['notes']} |"
+            )
 
-        header = f"### 💳 Enterprise Transactions ({len(txns)} Records)"
+        header = f"### Enterprise Transactions ({len(txns)} of 215 Records)"
         if matched_client:
             header += f" for Client `{matched_client}`"
 
         response_parts.append(header + "\n\n" + "\n".join(table_rows))
+
+    # 7. Policies DB Query
+    if is_policy_db_query:
+        policies = get_policies_list()
+        table_rows = [
+            "| Policy Code | Title | Category | Effective Date | Summary Guarantee |",
+            "| :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for pol in policies:
+            table_rows.append(
+                f"| `{pol['policy_code']}` | **{pol['title']}** | {pol['category']} | {pol['effective_date']} | {pol['summary']} |"
+            )
+        response_parts.append(
+            f"### Official Corporate Policies (Database Records)\n\n" +
+            "\n".join(table_rows)
+        )
+
+    # 8. Departments Query
+    if is_dept_query:
+        deps = get_departments_list()
+        table_rows = [
+            "| Code | Department Name | Head of Department | Budget | Location | Staff Count |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for d in deps:
+            table_rows.append(
+                f"| `{d['department_code']}` | **{d['name']}** | {d['head_of_department']} | ${d['budget']:,.0f} | {d['location']} | {d['employee_count']} |"
+            )
+        response_parts.append(
+            f"### Corporate Departments ({len(deps)} Departments)\n\n" +
+            "\n".join(table_rows)
+        )
 
     if response_parts:
         return "\n\n---\n\n".join(response_parts)
