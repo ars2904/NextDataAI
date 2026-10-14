@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from rag.engine import knowledge_base
 from backend.models import SourceCitation, ChatResponse
 from database.postgres import query_database_smart
+from database.sql_engine import answer_business_data_query
 
 load_dotenv()
 
@@ -166,6 +167,14 @@ class ChatOrchestrator:
         db_content = query_database_smart(message)
         if not db_content and effective_query != message:
             db_content = query_database_smart(effective_query)
+
+        # If not matched by static patterns, check dynamic Text-to-SQL Analytics engine
+        if not db_content:
+            sql_reply = answer_business_data_query(effective_query, client=self.client)
+            if not sql_reply and effective_query != message:
+                sql_reply = answer_business_data_query(message, client=self.client)
+            if sql_reply:
+                db_content = sql_reply
 
         if db_content:
             sources = [
@@ -536,8 +545,17 @@ class ChatOrchestrator:
         if not db_content and effective_query != message:
             db_content = query_database_smart(effective_query)
 
+        # Check dynamic Text-to-SQL Analytics engine
+        sql_content = None
+        if not db_content:
+            sql_content = answer_business_data_query(effective_query, client=self.client)
+            if not sql_content and effective_query != message:
+                sql_content = answer_business_data_query(message, client=self.client)
+            if sql_content:
+                db_content = sql_content
+
         combined_check = (message + " " + effective_query).lower()
-        if db_content and any(k in combined_check for k in ["database", "transaction", "client master", "product", "customer", "order", "inventory", "department"]):
+        if db_content and (sql_content or any(k in combined_check for k in ["database", "transaction", "client master", "product", "customer", "order", "inventory", "department"])):
             return ChatResponse(
                 reply=db_content,
                 mode="general",

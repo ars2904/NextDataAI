@@ -628,6 +628,12 @@ class DatabaseEngine:
             self.init_database()
         return self.SessionLocal()
 
+    def connect(self):
+        """Provide direct connection to underlying SQLAlchemy engine."""
+        if not self.engine:
+            self.init_database()
+        return self.engine.connect()
+
     def seed_sample_data(self):
         """Seed all 14 business areas if records are not present."""
         session = self.get_session()
